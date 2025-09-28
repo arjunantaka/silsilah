@@ -1,0 +1,5 @@
+kode,nama,tempat_lahir,tanggal_lahir,alamat,pekerjaan_sekolah,pasangan,orang_tua,gender,catatan
+A1,Bambang Hartono,Yogyakarta,,,,,Hartono Wirjosoedirjo,L,
+A1P1,Agus Bambang,Jakarta,,,,,Bambang Hartono,L,
+A2,Sari Hartini,Yogyakarta,,,,,Hartono Wirjosoedirjo,P,
+ROOT,Hartono Wirjosoedirjo,Yogyakarta,,,,Siti Hartinah,,L,

@@ -1,0 +1,744 @@
+{
+  "families": [
+    {
+      "id": "keluarga-soekarno-2024",
+      "nama": "Keluarga Besar Soekarno",
+      "root_id": "kusno-sosrodihardjo-1901",
+      "catatan": "Demo lengkap sistem silsilah dengan semua fitur: A/P/B/C/Wr/Ud codes, adopsi, pernikahan, perceraian, dan status hidup/wafat.",
+      "settings": {
+        "lineagePreference": "patrilineal"
+      }
+    }
+  ],
+  "persons": [
+    {
+      "id": "kusno-sosrodihardjo-1901",
+      "keluarga_id": "keluarga-soekarno-2024",
+      "nama_lengkap": "Kusno Sosrodihardjo (Soekarno)",
+      "nama_alias": "Bung Karno",
+      "gender": "L",
+      "tempat_lahir": "Surabaya",
+      "tanggal_lahir": "1901-06-06",
+      "tanggal_wafat": "1970-06-21",
+      "alamat": "Jakarta",
+      "pekerjaan_sekolah": "Presiden RI Pertama",
+      "catatan": "Proklamator kemerdekaan Indonesia",
+      "foto_path": "",
+      "status_hidup": "wafat",
+      "lineage_code": "",
+      "lineage_path": []
+    },
+    {
+      "id": "inggit-garnasih-1888",
+      "keluarga_id": "keluarga-soekarno-2024",
+      "nama_lengkap": "Inggit Garnasih",
+      "nama_alias": "Ibu Inggit",
+      "gender": "P",
+      "tempat_lahir": "Bogor",
+      "tanggal_lahir": "1888-02-10",
+      "tanggal_wafat": "1984-04-13",
+      "alamat": "Bandung",
+      "pekerjaan_sekolah": "Ibu Rumah Tangga",
+      "catatan": "Istri pertama Soekarno",
+      "foto_path": "",
+      "status_hidup": "wafat",
+      "lineage_code": "",
+      "lineage_path": []
+    },
+    {
+      "id": "fatmawati-1923",
+      "keluarga_id": "keluarga-soekarno-2024",
+      "nama_lengkap": "Fatmawati",
+      "nama_alias": "Ibu Fatmawati",
+      "gender": "P",
+      "tempat_lahir": "Bengkulu",
+      "tanggal_lahir": "1923-02-05",
+      "tanggal_wafat": "1980-05-14",
+      "alamat": "Jakarta",
+      "pekerjaan_sekolah": "Ibu Negara",
+      "catatan": "Penjahit bendera Merah Putih",
+      "foto_path": "",
+      "status_hidup": "wafat",
+      "lineage_code": "",
+      "lineage_path": []
+    },
+    {
+      "id": "hartini-1924",
+      "keluarga_id": "keluarga-soekarno-2024",
+      "nama_lengkap": "Hartini",
+      "nama_alias": "Ibu Hartini",
+      "gender": "P",
+      "tempat_lahir": "Salatiga",
+      "tanggal_lahir": "1924-08-29",
+      "tanggal_wafat": "2021-10-31",
+      "alamat": "Jakarta",
+      "pekerjaan_sekolah": "Ibu Rumah Tangga",
+      "catatan": "Istri ketiga Soekarno",
+      "foto_path": "",
+      "status_hidup": "wafat",
+      "lineage_code": "",
+      "lineage_path": []
+    },
+    {
+      "id": "ratna-sari-1947",
+      "keluarga_id": "keluarga-soekarno-2024",
+      "nama_lengkap": "Ratna Sari Dewi",
+      "nama_alias": "Dewi Soekarno",
+      "gender": "P",
+      "tempat_lahir": "Tokyo, Jepang",
+      "tanggal_lahir": "1940-02-06",
+      "tanggal_wafat": "",
+      "alamat": "Tokyo",
+      "pekerjaan_sekolah": "Aktivis",
+      "catatan": "Istri keempat Soekarno, berkebangsaan Jepang",
+      "foto_path": "",
+      "status_hidup": "hidup",
+      "lineage_code": "",
+      "lineage_path": []
+    },
+
+    {
+      "id": "guntur-1944",
+      "keluarga_id": "keluarga-soekarno-2024",
+      "nama_lengkap": "A1. Guntur Soekarnoputra",
+      "nama_alias": "Guntur",
+      "gender": "L",
+      "tempat_lahir": "Jakarta",
+      "tanggal_lahir": "1944-08-18",
+      "tanggal_wafat": "2022-10-11",
+      "alamat": "Jakarta",
+      "pekerjaan_sekolah": "Pengusaha",
+      "catatan": "Anak pertama Soekarno dari Fatmawati",
+      "foto_path": "",
+      "status_hidup": "wafat",
+      "lineage_code": "A1",
+      "lineage_path": ["A1"]
+    },
+    {
+      "id": "megawati-1947",
+      "keluarga_id": "keluarga-soekarno-2024",
+      "nama_lengkap": "A2. Dyah Permata Megawati Soekarnoputri",
+      "nama_alias": "Megawati",
+      "gender": "P",
+      "tempat_lahir": "Yogyakarta",
+      "tanggal_lahir": "1947-01-23",
+      "tanggal_wafat": "",
+      "alamat": "Jakarta",
+      "pekerjaan_sekolah": "Presiden RI ke-5",
+      "catatan": "Presiden wanita pertama Indonesia",
+      "foto_path": "",
+      "status_hidup": "hidup",
+      "lineage_code": "A2",
+      "lineage_path": ["A2"]
+    },
+    {
+      "id": "rachmawati-1952",
+      "keluarga_id": "keluarga-soekarno-2024",
+      "nama_lengkap": "A3. Rachmawati Soekarnoputri",
+      "nama_alias": "Rachmawati",
+      "gender": "P",
+      "tempat_lahir": "Jakarta",
+      "tanggal_lahir": "1952-09-13",
+      "tanggal_wafat": "2021-07-03",
+      "alamat": "Jakarta",
+      "pekerjaan_sekolah": "Aktivis Politik",
+      "catatan": "Aktivis politik dan sosial",
+      "foto_path": "",
+      "status_hidup": "wafat",
+      "lineage_code": "A3",
+      "lineage_path": ["A3"]
+    },
+    {
+      "id": "sukmawati-1951",
+      "keluarga_id": "keluarga-soekarno-2024",
+      "nama_lengkap": "A4. Sukmawati Soekarnoputri",
+      "nama_alias": "Sukmawati",
+      "gender": "P",
+      "tempat_lahir": "Jakarta",
+      "tanggal_lahir": "1951-10-26",
+      "tanggal_wafat": "",
+      "alamat": "Jakarta",
+      "pekerjaan_sekolah": "Penyair",
+      "catatan": "Penyair dan aktivis budaya",
+      "foto_path": "",
+      "status_hidup": "hidup",
+      "lineage_code": "A4",
+      "lineage_path": ["A4"]
+    },
+    {
+      "id": "guruh-1953",
+      "keluarga_id": "keluarga-soekarno-2024",
+      "nama_lengkap": "A5. Guruh Soekarnoputra",
+      "nama_alias": "Guruh",
+      "gender": "L",
+      "tempat_lahir": "Jakarta",
+      "tanggal_lahir": "1953-01-13",
+      "tanggal_wafat": "",
+      "alamat": "Jakarta",
+      "pekerjaan_sekolah": "Seniman",
+      "catatan": "Koreografer dan seniman",
+      "foto_path": "",
+      "status_hidup": "hidup",
+      "lineage_code": "A5",
+      "lineage_path": ["A5"]
+    },
+
+    {
+      "id": "taufan-1957",
+      "keluarga_id": "keluarga-soekarno-2024",
+      "nama_lengkap": "A6. Taufan Soekarno",
+      "nama_alias": "Taufan",
+      "gender": "L",
+      "tempat_lahir": "Jakarta",
+      "tanggal_lahir": "1957-05-15",
+      "tanggal_wafat": "",
+      "alamat": "Jakarta",
+      "pekerjaan_sekolah": "Pengusaha",
+      "catatan": "Anak Soekarno dari Hartini",
+      "foto_path": "",
+      "status_hidup": "hidup",
+      "lineage_code": "A6",
+      "lineage_path": ["A6"]
+    },
+    {
+      "id": "bayu-1958",
+      "keluarga_id": "keluarga-soekarno-2024",
+      "nama_lengkap": "A7. Bayu Soekarno",
+      "nama_alias": "Bayu",
+      "gender": "L",
+      "tempat_lahir": "Jakarta",
+      "tanggal_lahir": "1958-10-26",
+      "tanggal_wafat": "",
+      "alamat": "Jakarta",
+      "pekerjaan_sekolah": "Pilot",
+      "catatan": "Anak Soekarno dari Hartini",
+      "foto_path": "",
+      "status_hidup": "hidup",
+      "lineage_code": "A7",
+      "lineage_path": ["A7"]
+    },
+    {
+      "id": "kartika-1967",
+      "keluarga_id": "keluarga-soekarno-2024",
+      "nama_lengkap": "A8. Kartika Sari Dewi Soekarno",
+      "nama_alias": "Kartika",
+      "gender": "P",
+      "tempat_lahir": "Tokyo",
+      "tanggal_lahir": "1967-02-20",
+      "tanggal_wafat": "",
+      "alamat": "Tokyo",
+      "pekerjaan_sekolah": "Model",
+      "catatan": "Anak Soekarno dari Ratna Sari Dewi",
+      "foto_path": "",
+      "status_hidup": "hidup",
+      "lineage_code": "A8",
+      "lineage_path": ["A8"]
+    },
+
+    {
+      "id": "thasya-hassan-1980",
+      "keluarga_id": "keluarga-soekarno-2024",
+      "nama_lengkap": "Hassan Gamal Abdel Nasser",
+      "nama_alias": "Hassan",
+      "gender": "L",
+      "tempat_lahir": "Cairo",
+      "tanggal_lahir": "1942-04-18",
+      "tanggal_wafat": "",
+      "alamat": "Jakarta",
+      "pekerjaan_sekolah": "Diplomat",
+      "catatan": "Suami Megawati",
+      "foto_path": "",
+      "status_hidup": "hidup",
+      "lineage_code": "",
+      "lineage_path": []
+    },
+
+    {
+      "id": "mohammad-prananda-1981",
+      "keluarga_id": "keluarga-soekarno-2024",
+      "nama_lengkap": "B1. Mohammad Prananda Prabowo",
+      "nama_alias": "Prananda",
+      "gender": "L",
+      "tempat_lahir": "Jakarta",
+      "tanggal_lahir": "1981-05-10",
+      "tanggal_wafat": "",
+      "alamat": "Jakarta",
+      "pekerjaan_sekolah": "Pengusaha",
+      "catatan": "Anak pertama Megawati",
+      "foto_path": "",
+      "status_hidup": "hidup",
+      "lineage_code": "B1",
+      "lineage_path": ["A2", "B1"]
+    },
+    {
+      "id": "puan-maharani-1973",
+      "keluarga_id": "keluarga-soekarno-2024",
+      "nama_lengkap": "B2. Puan Maharani",
+      "nama_alias": "Puan",
+      "gender": "P",
+      "tempat_lahir": "Jakarta",
+      "tanggal_lahir": "1973-01-15",
+      "tanggal_wafat": "",
+      "alamat": "Jakarta",
+      "pekerjaan_sekolah": "Ketua DPR RI",
+      "catatan": "Putri Megawati, politisi senior",
+      "foto_path": "",
+      "status_hidup": "hidup",
+      "lineage_code": "B2",
+      "lineage_path": ["A2", "B2"]
+    },
+    {
+      "id": "ribka-tjiptaning-1974",
+      "keluarga_id": "keluarga-soekarno-2024",
+      "nama_lengkap": "B3. Ribka Tjiptaning",
+      "nama_alias": "Ribka",
+      "gender": "P",
+      "tempat_lahir": "Jakarta",
+      "tanggal_lahir": "1974-11-07",
+      "tanggal_wafat": "",
+      "alamat": "Jakarta",
+      "pekerjaan_sekolah": "Pengusaha",
+      "catatan": "Putri Megawati",
+      "foto_path": "",
+      "status_hidup": "hidup",
+      "lineage_code": "B3",
+      "lineage_path": ["A2", "B3"]
+    },
+
+    {
+      "id": "rio-gandhi-2005",
+      "keluarga_id": "keluarga-soekarno-2024",
+      "nama_lengkap": "C1. Rio Satrio Gandhi Prananda",
+      "nama_alias": "Rio",
+      "gender": "L",
+      "tempat_lahir": "Jakarta",
+      "tanggal_lahir": "2005-03-15",
+      "tanggal_wafat": "",
+      "alamat": "Jakarta",
+      "pekerjaan_sekolah": "Pelajar",
+      "catatan": "Cucu Megawati dari Prananda",
+      "foto_path": "",
+      "status_hidup": "hidup",
+      "lineage_code": "C1",
+      "lineage_path": ["A2", "B1", "C1"]
+    },
+    {
+      "id": "rania-putri-2007",
+      "keluarga_id": "keluarga-soekarno-2024",
+      "nama_lengkap": "C2. Rania Putri Soekarno",
+      "nama_alias": "Rania",
+      "gender": "P",
+      "tempat_lahir": "Jakarta",
+      "tanggal_lahir": "2007-08-22",
+      "tanggal_wafat": "",
+      "alamat": "Jakarta",
+      "pekerjaan_sekolah": "Pelajar",
+      "catatan": "Cucu Megawati dari Prananda",
+      "foto_path": "",
+      "status_hidup": "hidup",
+      "lineage_code": "C2",
+      "lineage_path": ["A2", "B1", "C2"]
+    },
+
+    {
+      "id": "miqdad-al-haq-2000",
+      "keluarga_id": "keluarga-soekarno-2024",
+      "nama_lengkap": "C1. Miqdad Al Haq Maharani",
+      "nama_alias": "Miqdad",
+      "gender": "L",
+      "tempat_lahir": "Jakarta",
+      "tanggal_lahir": "2000-12-08",
+      "tanggal_wafat": "",
+      "alamat": "Jakarta",
+      "pekerjaan_sekolah": "Mahasiswa",
+      "catatan": "Anak Puan Maharani",
+      "foto_path": "",
+      "status_hidup": "hidup",
+      "lineage_code": "C1",
+      "lineage_path": ["A2", "B2", "C1"]
+    },
+
+    {
+      "id": "anak-angkat-2010",
+      "keluarga_id": "keluarga-soekarno-2024",
+      "nama_lengkap": "A9. Wijaya Kusuma (Adopsi)",
+      "nama_alias": "Wijaya",
+      "gender": "L",
+      "tempat_lahir": "Yogyakarta",
+      "tanggal_lahir": "2010-05-17",
+      "tanggal_wafat": "",
+      "alamat": "Jakarta",
+      "pekerjaan_sekolah": "Pelajar",
+      "catatan": "Anak angkat Sukmawati, diadopsi tahun 2015",
+      "foto_path": "",
+      "status_hidup": "hidup",
+      "lineage_code": "A9",
+      "lineage_path": ["A9"]
+    },
+
+    {
+      "id": "wiranto-1947",
+      "keluarga_id": "keluarga-soekarno-2024",
+      "nama_lengkap": "Wiranto",
+      "nama_alias": "Pak Wiranto",
+      "gender": "L",
+      "tempat_lahir": "Yogyakarta",
+      "tanggal_lahir": "1947-04-04",
+      "tanggal_wafat": "",
+      "alamat": "Jakarta",
+      "pekerjaan_sekolah": "Jenderal TNI (Purn)",
+      "catatan": "Suami Sukmawati",
+      "foto_path": "",
+      "status_hidup": "hidup",
+      "lineage_code": "",
+      "lineage_path": []
+    },
+
+    {
+      "id": "arjuna-rachepoetry-1982",
+      "keluarga_id": "keluarga-soekarno-2024",
+      "nama_lengkap": "B1. Arjuna Rachepoetry",
+      "nama_alias": "Arjuna",  
+      "gender": "L",
+      "tempat_lahir": "Jakarta",
+      "tanggal_lahir": "1982-06-14",
+      "tanggal_wafat": "",
+      "alamat": "Jakarta",
+      "pekerjaan_sekolah": "Musisi",
+      "catatan": "Anak Sukmawati, musisi terkenal",
+      "foto_path": "",
+      "status_hidup": "hidup",
+      "lineage_code": "B1",
+      "lineage_path": ["A4", "B1"]
+    },
+
+    {
+      "id": "cakra-rachepoetry-2012",
+      "keluarga_id": "keluarga-soekarno-2024",
+      "nama_lengkap": "C1. Cakra Widya Rachepoetry",
+      "nama_alias": "Cakra",
+      "gender": "L",
+      "tempat_lahir": "Jakarta",
+      "tanggal_lahir": "2012-09-25",
+      "tanggal_wafat": "",
+      "alamat": "Jakarta",
+      "pekerjaan_sekolah": "Siswa",
+      "catatan": "Anak Arjuna Rachepoetry",
+      "foto_path": "",
+      "status_hidup": "hidup",
+      "lineage_code": "C1",
+      "lineage_path": ["A4", "B1", "C1"]
+    }
+  ],
+  "unions": [
+    {
+      "id": "union-soekarno-inggit",
+      "keluarga_id": "keluarga-soekarno-2024",
+      "partner1_id": "kusno-sosrodihardjo-1901",
+      "partner2_id": "inggit-garnasih-1888",
+      "status": "cerai",
+      "tanggal_mulai": "1921-05-29",
+      "tanggal_akhir": "1943-01-01",
+      "catatan": "Pernikahan pertama Soekarno, tidak memiliki anak biologis"
+    },
+    {
+      "id": "union-soekarno-fatmawati",
+      "keluarga_id": "keluarga-soekarno-2024",
+      "partner1_id": "kusno-sosrodihardjo-1901",
+      "partner2_id": "fatmawati-1923",
+      "status": "menikah",
+      "tanggal_mulai": "1943-06-01",
+      "tanggal_akhir": "",
+      "catatan": "Istri kedua Soekarno, melahirkan 5 anak"
+    },
+    {
+      "id": "union-soekarno-hartini",
+      "keluarga_id": "keluarga-soekarno-2024",
+      "partner1_id": "kusno-sosrodihardjo-1901",
+      "partner2_id": "hartini-1924",
+      "status": "menikah",
+      "tanggal_mulai": "1954-03-17",
+      "tanggal_akhir": "",
+      "catatan": "Istri ketiga Soekarno, melahirkan 2 anak"
+    },
+    {
+      "id": "union-soekarno-ratna",
+      "keluarga_id": "keluarga-soekarno-2024",
+      "partner1_id": "kusno-sosrodihardjo-1901",
+      "partner2_id": "ratna-sari-1947",
+      "status": "menikah",
+      "tanggal_mulai": "1962-07-01",
+      "tanggal_akhir": "",
+      "catatan": "Istri keempat Soekarno, melahirkan 1 anak"
+    },
+    {
+      "id": "union-megawati-hassan",
+      "keluarga_id": "keluarga-soekarno-2024",
+      "partner1_id": "megawati-1947",
+      "partner2_id": "thasya-hassan-1980",
+      "status": "menikah",
+      "tanggal_mulai": "1970-05-02",
+      "tanggal_akhir": "",
+      "catatan": "Pernikahan Megawati dengan Hassan"
+    },
+    {
+      "id": "union-sukmawati-wiranto",
+      "keluarga_id": "keluarga-soekarno-2024",
+      "partner1_id": "sukmawati-1951",
+      "partner2_id": "wiranto-1947",
+      "status": "cerai",
+      "tanggal_mulai": "1980-12-15",
+      "tanggal_akhir": "2005-08-20",
+      "catatan": "Pernikahan Sukmawati, bercerai tahun 2005"
+    }
+  ],
+  "relations": [
+    {
+      "id": "rel-soekarno-guntur",
+      "parent_id": "kusno-sosrodihardjo-1901",
+      "child_id": "guntur-1944",
+      "union_id": "union-soekarno-fatmawati",
+      "jenis": "biological",
+      "birth_order": 1
+    },
+    {
+      "id": "rel-fatmawati-guntur",
+      "parent_id": "fatmawati-1923",
+      "child_id": "guntur-1944",
+      "union_id": "union-soekarno-fatmawati",
+      "jenis": "biological",
+      "birth_order": 1
+    },
+    {
+      "id": "rel-soekarno-megawati",
+      "parent_id": "kusno-sosrodihardjo-1901",
+      "child_id": "megawati-1947",
+      "union_id": "union-soekarno-fatmawati",
+      "jenis": "biological",
+      "birth_order": 2
+    },
+    {
+      "id": "rel-fatmawati-megawati",
+      "parent_id": "fatmawati-1923",
+      "child_id": "megawati-1947",
+      "union_id": "union-soekarno-fatmawati",
+      "jenis": "biological",
+      "birth_order": 2
+    },
+    {
+      "id": "rel-soekarno-rachmawati",
+      "parent_id": "kusno-sosrodihardjo-1901",
+      "child_id": "rachmawati-1952",
+      "union_id": "union-soekarno-fatmawati",
+      "jenis": "biological",
+      "birth_order": 3
+    },
+    {
+      "id": "rel-fatmawati-rachmawati",
+      "parent_id": "fatmawati-1923",
+      "child_id": "rachmawati-1952",
+      "union_id": "union-soekarno-fatmawati",
+      "jenis": "biological",
+      "birth_order": 3
+    },
+    {
+      "id": "rel-soekarno-sukmawati",
+      "parent_id": "kusno-sosrodihardjo-1901",
+      "child_id": "sukmawati-1951",
+      "union_id": "union-soekarno-fatmawati",
+      "jenis": "biological",
+      "birth_order": 4
+    },
+    {
+      "id": "rel-fatmawati-sukmawati",
+      "parent_id": "fatmawati-1923",
+      "child_id": "sukmawati-1951",
+      "union_id": "union-soekarno-fatmawati",
+      "jenis": "biological",
+      "birth_order": 4
+    },
+    {
+      "id": "rel-soekarno-guruh",
+      "parent_id": "kusno-sosrodihardjo-1901",
+      "child_id": "guruh-1953",
+      "union_id": "union-soekarno-fatmawati",
+      "jenis": "biological",
+      "birth_order": 5
+    },
+    {
+      "id": "rel-fatmawati-guruh",
+      "parent_id": "fatmawati-1923",
+      "child_id": "guruh-1953",
+      "union_id": "union-soekarno-fatmawati",
+      "jenis": "biological",
+      "birth_order": 5
+    },
+
+    {
+      "id": "rel-soekarno-taufan",
+      "parent_id": "kusno-sosrodihardjo-1901",
+      "child_id": "taufan-1957",
+      "union_id": "union-soekarno-hartini",
+      "jenis": "biological",
+      "birth_order": 6
+    },
+    {
+      "id": "rel-hartini-taufan",
+      "parent_id": "hartini-1924",
+      "child_id": "taufan-1957",
+      "union_id": "union-soekarno-hartini",
+      "jenis": "biological",
+      "birth_order": 6
+    },
+    {
+      "id": "rel-soekarno-bayu",
+      "parent_id": "kusno-sosrodihardjo-1901",
+      "child_id": "bayu-1958",
+      "union_id": "union-soekarno-hartini",
+      "jenis": "biological",
+      "birth_order": 7
+    },
+    {
+      "id": "rel-hartini-bayu",
+      "parent_id": "hartini-1924",
+      "child_id": "bayu-1958",
+      "union_id": "union-soekarno-hartini",
+      "jenis": "biological",
+      "birth_order": 7
+    },
+
+    {
+      "id": "rel-soekarno-kartika",
+      "parent_id": "kusno-sosrodihardjo-1901",
+      "child_id": "kartika-1967",
+      "union_id": "union-soekarno-ratna",
+      "jenis": "biological",
+      "birth_order": 8
+    },
+    {
+      "id": "rel-ratna-kartika",
+      "parent_id": "ratna-sari-1947",
+      "child_id": "kartika-1967",
+      "union_id": "union-soekarno-ratna",
+      "jenis": "biological",
+      "birth_order": 8
+    },
+
+    {
+      "id": "rel-megawati-prananda",
+      "parent_id": "megawati-1947",
+      "child_id": "mohammad-prananda-1981",
+      "union_id": "union-megawati-hassan",
+      "jenis": "biological",
+      "birth_order": 1
+    },
+    {
+      "id": "rel-hassan-prananda",
+      "parent_id": "thasya-hassan-1980",
+      "child_id": "mohammad-prananda-1981",
+      "union_id": "union-megawati-hassan",
+      "jenis": "biological",
+      "birth_order": 1
+    },
+    {
+      "id": "rel-megawati-puan",
+      "parent_id": "megawati-1947",
+      "child_id": "puan-maharani-1973",
+      "union_id": "union-megawati-hassan",
+      "jenis": "biological",
+      "birth_order": 2
+    },
+    {
+      "id": "rel-hassan-puan",
+      "parent_id": "thasya-hassan-1980",
+      "child_id": "puan-maharani-1973",
+      "union_id": "union-megawati-hassan",
+      "jenis": "biological",
+      "birth_order": 2
+    },
+    {
+      "id": "rel-megawati-ribka",
+      "parent_id": "megawati-1947",
+      "child_id": "ribka-tjiptaning-1974",
+      "union_id": "union-megawati-hassan",
+      "jenis": "biological",
+      "birth_order": 3
+    },
+    {
+      "id": "rel-hassan-ribka",
+      "parent_id": "thasya-hassan-1980",
+      "child_id": "ribka-tjiptaning-1974",
+      "union_id": "union-megawati-hassan",
+      "jenis": "biological",
+      "birth_order": 3
+    },
+
+    {
+      "id": "rel-prananda-rio",
+      "parent_id": "mohammad-prananda-1981",
+      "child_id": "rio-gandhi-2005",
+      "union_id": "",
+      "jenis": "biological",
+      "birth_order": 1
+    },
+    {
+      "id": "rel-prananda-rania",
+      "parent_id": "mohammad-prananda-1981",
+      "child_id": "rania-putri-2007",
+      "union_id": "",
+      "jenis": "biological",
+      "birth_order": 2
+    },
+
+    {
+      "id": "rel-puan-miqdad",
+      "parent_id": "puan-maharani-1973",
+      "child_id": "miqdad-al-haq-2000",
+      "union_id": "",
+      "jenis": "biological",
+      "birth_order": 1
+    },
+
+    {
+      "id": "rel-sukmawati-arjuna",
+      "parent_id": "sukmawati-1951",
+      "child_id": "arjuna-rachepoetry-1982",
+      "union_id": "union-sukmawati-wiranto",
+      "jenis": "biological",
+      "birth_order": 1
+    },
+    {
+      "id": "rel-wiranto-arjuna",
+      "parent_id": "wiranto-1947",
+      "child_id": "arjuna-rachepoetry-1982",
+      "union_id": "union-sukmawati-wiranto",
+      "jenis": "biological",
+      "birth_order": 1
+    },
+
+    {
+      "id": "rel-sukmawati-wijaya-adopsi",
+      "parent_id": "sukmawati-1951",
+      "child_id": "anak-angkat-2010",
+      "union_id": "",
+      "jenis": "adoptive",
+      "birth_order": 9
+    },
+
+    {
+      "id": "rel-arjuna-cakra",
+      "parent_id": "arjuna-rachepoetry-1982",
+      "child_id": "cakra-rachepoetry-2012",
+      "union_id": "",
+      "jenis": "biological",
+      "birth_order": 1
+    }
+  ],
+  "settings": {
+    "lineagePreference": "patrilineal"
+  },
+  "metadata": {
+    "lastRebuildAt": null,
+    "description": "Data demo lengkap keluarga Soekarno menunjukkan semua fitur sistem: kode lineage A/P/B/C, pernikahan, perceraian, adopsi, status hidup/wafat, dan generasi hingga cicit."
+  }
+}

@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Render - Keluarga Editor</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 20px;
+            background: #f5f5f5;
+        }
+        .debug-info {
+            background: #fff3cd;
+            padding: 0.5rem;
+            border-radius: 4px;
+            margin-bottom: 1rem;
+            font-size: 0.85rem;
+        }
+        .canvas {
+            position: relative;
+            min-height: 600px;
+            background: #f8fafc;
+            border-radius: 12px;
+            border: 2px solid #e5e7eb;
+            overflow: hidden;
+        }
+        .edges {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+        }
+        .edges line {
+            stroke: #a855f7;
+            stroke-width: 2;
+        }
+        .node {
+            position: absolute;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            user-select: none;
+            cursor: grab;
+            border: 2px solid #6366f1;
+            font: inherit;
+            padding: 0;
+            width: 180px;
+            height: 90px;
+        }
+        .node header {
+            padding: 0.5rem 0.75rem;
+            border-bottom: 1px solid #e5e7eb;
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+        }
+        .node .name {
+            font-weight: 600;
+            color: #1f2937;
+            font-size: 0.9rem;
+        }
+        .node .code {
+            font-size: 0.75rem;
+            color: #6366f1;
+        }
+        .test-results {
+            background: white;
+            padding: 1rem;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <h1>🧪 Test Render - Family Editor</h1>
+    
+    <div class="test-results">
+        <h3>Test Results:</h3>
+        <div id="results"></div>
+    </div>
+
+    <div class="debug-info">
+        🔍 Debug: <span id="debug-info">Loading...</span>
+    </div>
+
+    <div class="canvas" id="canvas">
+        <svg class="edges" id="edges">
+            <!-- Lines will be inserted here -->
+        </svg>
+        <!-- Nodes will be inserted here -->
+    </div>
+
+    <script>
+        const sampleData = {
+            "families": [
+                {
+                    "id": "9bfb9090-be60-4b85-b99d-4ee86c0b68fd",
+                    "nama": "Keluarga Sadinan Sastro Dimejo",
+                    "root_id": "4651b1f8-6d5d-4e9f-a554-c7757c2c5c8a"
+                }
+            ],
+            "persons": [
+                {
+                    "id": "4651b1f8-6d5d-4e9f-a554-c7757c2c5c8a",
+                    "keluarga_id": "9bfb9090-be60-4b85-b99d-4ee86c0b68fd",
+                    "nama_lengkap": "Sadiman Sastro Dimejo",
+                    "gender": "L",
+                    "lineage_code": "ROOT"
+                },
+                {
+                    "id": "d7d20d92-5b60-4972-a07e-c237e2e524d9",
+                    "keluarga_id": "9bfb9090-be60-4b85-b99d-4ee86c0b68fd",
+                    "nama_lengkap": "Sutiyem",
+                    "gender": "P",
+                    "lineage_code": ""
+                },
+                {
+                    "id": "bdffe9bb-df75-4cda-b29b-a786a4e9c59a",
+                    "keluarga_id": "9bfb9090-be60-4b85-b99d-4ee86c0b68fd",
+                    "nama_lengkap": "A1. Suratmi",
+                    "gender": "P",
+                    "lineage_code": "A1"
+                }
+            ],
+            "layouts": {
+                "9bfb9090-be60-4b85-b99d-4ee86c0b68fd": {
+                    "4651b1f8-6d5d-4e9f-a554-c7757c2c5c8a": { "x": 100, "y": 100 },
+                    "d7d20d92-5b60-4b85-b99d-4ee86c0b68fd": { "x": 350, "y": 100 },
+                    "bdffe9bb-df75-4cda-b29b-a786a4e9c59a": { "x": 600, "y": 100 }
+                }
+            }
+        };
+
+        function runTest() {
+            const familyId = sampleData.families[0].id;
+            const persons = sampleData.persons.filter(p => p.keluarga_id === familyId);
+            const positions = sampleData.layouts[familyId] || {};
+            const canvas = document.getElementById('canvas');
+            const canvasRect = canvas.getBoundingClientRect();
+
+            // Test results
+            const results = [];
+            results.push(`✅ Family loaded: ${sampleData.families[0].nama}`);
+            results.push(`✅ Persons found: ${persons.length}`);
+            results.push(`✅ Positions loaded: ${Object.keys(positions).length}`);
+            results.push(`✅ Canvas size: ${Math.round(canvasRect.width)}×${Math.round(canvasRect.height)}`);
+
+            // Debug info
+            document.getElementById('debug-info').textContent = 
+                `${persons.length} persons, ${Object.keys(positions).length} positions, Canvas: ${Math.round(canvasRect.width)}×${Math.round(canvasRect.height)}`;
+
+            // Render nodes
+            let renderedNodes = 0;
+            persons.forEach(person => {
+                const position = positions[person.id];
+                if (position) {
+                    const node = document.createElement('div');
+                    node.className = 'node';
+                    node.style.transform = `translate(${position.x}px, ${position.y}px)`;
+                    
+                    node.innerHTML = `
+                        <header>
+                            <span class="name">${person.nama_lengkap}</span>
+                            <span class="code">${person.lineage_code || '-'}</span>
+                        </header>
+                    `;
+                    
+                    canvas.appendChild(node);
+                    renderedNodes++;
+                    
+                    results.push(`✅ Rendered: ${person.nama_lengkap} at (${position.x}, ${position.y})`);
+                } else {
+                    results.push(`❌ Missing position for: ${person.nama_lengkap}`);
+                }
+            });
+
+            results.push(`🎯 TOTAL RENDERED: ${renderedNodes}/${persons.length} nodes`);
+
+            // Show results
+            document.getElementById('results').innerHTML = results.map(r => `<div>${r}</div>`).join('');
+
+            // Test CSS positioning
+            setTimeout(() => {
+                const nodeElements = document.querySelectorAll('.node');
+                results.push(`🔍 DOM nodes found: ${nodeElements.length}`);
+                
+                nodeElements.forEach((node, i) => {
+                    const computedStyle = window.getComputedStyle(node);
+                    const transform = computedStyle.transform;
+                    results.push(`   Node ${i+1} transform: ${transform}`);
+                });
+
+                document.getElementById('results').innerHTML = results.map(r => `<div>${r}</div>`).join('');
+            }, 100);
+        }
+
+        // Run test when page loads
+        window.addEventListener('load', runTest);
+        
+        // Also run test when window resizes
+        window.addEventListener('resize', runTest);
+    </script>
+</body>
+</html>
