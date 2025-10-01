@@ -1,0 +1,249 @@
+<script>
+  import { trahStore } from '../stores/trah.js';
+  import { getPersonById, getDescendants } from '../stores/trah.js';
+  import { getGenerasiLabel } from '../utils/kodeGenerator.js';
+
+  let selectedPersonId = null;
+  let tableData = [];
+  
+  $: persons = $trahStore.persons;
+  $: rootPersonObj = persons.find(p => p.is_root);
+  
+  $: if (rootPersonObj && !selectedPersonId) {
+    selectedPersonId = rootPersonObj.id;
+  }
+
+  $: if (selectedPersonId) {
+    generateTable();
+  }
+
+  function generateTable() {
+    if (!selectedPersonId) {
+      tableData = [];
+      return;
+    }
+
+    const selectedPerson = getPersonById(persons, selectedPersonId);
+    if (!selectedPerson) {
+      tableData = [];
+      return;
+    }
+
+    const descendants = getDescendants(persons, selectedPersonId);
+    tableData = [selectedPerson, ...descendants].map(person => {
+      const pasangan = person.pasangan_id ? getPersonById(persons, person.pasangan_id) : null;
+      const parent = person.parent_id ? getPersonById(persons, person.parent_id) : null;
+      
+      return {
+        kode: person.kode || "-",
+        nama: person.nama_lengkap,
+        ttl: `${person.tempat_lahir || "-"}, ${person.tanggal_lahir || "-"}`,
+        alamat: person.alamat || "-",
+        pekerjaan: person.pekerjaan || "-",
+        pasangan: pasangan ? pasangan.nama_lengkap : "-",
+        orangTua: parent ? parent.nama_lengkap : "-",
+        generasi: getGenerasiLabel(person.generasi)
+      };
+    });
+  }
+
+  function exportToCSV() {
+    const headers = ["Kode", "Nama", "TTL", "Alamat", "Pekerjaan", "Pasangan", "Orang Tua", "Generasi"];
+    const rows = tableData.map(row => [
+      row.kode,
+      row.nama,
+      row.ttl,
+      row.alamat,
+      row.pekerjaan,
+      row.pasangan,
+      row.orangTua,
+      row.generasi
+    ]);
+
+    const csvContent = [
+      headers.join(","),
+      ...rows.map(row => row.map(cell => `"${cell}"`).join(","))
+    ].join("\n");
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement("a");
+    const url = URL.createObjectURL(blob);
+    link.setAttribute("href", url);
+    link.setAttribute("download", `trah-${$trahStore.trah?.nama_trah || 'export'}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }
+
+  function printTable() {
+    window.print();
+  }
+</script>
+
+<div class="export-table" data-testid="export-table-root">
+  <div class="controls no-print" data-testid="export-controls">
+    <div class="selector" data-testid="export-root-selector">
+      <label>
+        Pilih Anggota sebagai Root:
+        <select bind:value={selectedPersonId} data-testid="select-export-root">
+          {#each persons as person}
+            <option value={person.id} data-testid={`export-root-option-${person.id}`}>
+              {person.kode || "Root"} - {person.nama_lengkap}
+            </option>
+          {/each}
+        </select>
+      </label>
+    </div>
+    
+    <div class="buttons" data-testid="export-buttons">
+      <button on:click={exportToCSV} disabled={tableData.length === 0} data-testid="btn-export-csv">
+        📥 Export CSV
+      </button>
+      <button on:click={printTable} disabled={tableData.length === 0} data-testid="btn-print-table">
+        🖨️ Print
+      </button>
+    </div>
+  </div>
+
+  {#if tableData.length > 0}
+    <div class="table-container" data-testid="export-table-container">
+      <table data-testid="export-table">
+        <thead>
+          <tr>
+            <th>Kode</th>
+            <th>Nama</th>
+            <th>TTL</th>
+            <th>Alamat</th>
+            <th>Pekerjaan</th>
+            <th>Pasangan</th>
+            <th>Orang Tua</th>
+            <th>Generasi</th>
+          </tr>
+        </thead>
+        <tbody>
+          {#each tableData as row}
+<tr data-testid={`export-row-${row.kode}`}>
+              <td>{row.kode}</td>
+              <td>{row.nama}</td>
+              <td>{row.ttl}</td>
+              <td>{row.alamat}</td>
+              <td>{row.pekerjaan}</td>
+              <td>{row.pasangan}</td>
+              <td>{row.orangTua}</td>
+              <td>{row.generasi}</td>
+            </tr>
+          {/each}
+        </tbody>
+      </table>
+    </div>
+  {:else}
+    <p data-testid="export-empty">Tidak ada data untuk ditampilkan.</p>
+  {/if}
+</div>
+
+<style>
+  .export-table {
+    padding: 1rem;
+  }
+
+  .controls {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+    gap: 1rem;
+    flex-wrap: wrap;
+  }
+
+  .selector {
+    flex: 1;
+    min-width: 300px;
+  }
+
+  .selector label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    font-weight: 600;
+  }
+
+  .selector select {
+    padding: 0.5rem;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 1rem;
+  }
+
+  .buttons {
+    display: flex;
+    gap: 0.5rem;
+  }
+
+  button {
+    padding: 0.6rem 1rem;
+    background: #007bff;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.9rem;
+  }
+
+  button:hover:not(:disabled) {
+    background: #0056b3;
+  }
+
+  button:disabled {
+    background: #ccc;
+    cursor: not-allowed;
+  }
+
+  .table-container {
+    overflow-x: auto;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    background: white;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  }
+
+  th, td {
+    padding: 0.75rem;
+    text-align: left;
+    border: 1px solid #ddd;
+  }
+
+  th {
+    background: #f8f9fa;
+    font-weight: 600;
+    position: sticky;
+    top: 0;
+  }
+
+  tbody tr:hover {
+    background: #f8f9fa;
+  }
+
+  @media print {
+    .no-print {
+      display: none !important;
+    }
+
+    .export-table {
+      padding: 0;
+    }
+
+    table {
+      box-shadow: none;
+    }
+
+    th {
+      background: #e9ecef !important;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+  }
+</style>
