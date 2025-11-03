@@ -11,6 +11,10 @@
   let showForm = false;
   let selectedParentId = null;
   let editingPerson = null;
+  let showSpouseModal = false;
+  let spouseModalMode = 'view'; // 'view' or 'edit'
+  let selectedPersonForSpouse = null;
+  let spouseFormData = null;
 
   $: persons = $trahStore.persons;
   $: filteredPersons = persons.filter(p => {
@@ -57,24 +61,62 @@
     const person = persons.find(p => p.id === personId);
     if (!person) return;
 
-    // Spouse is now a simple object (not a trah member), so we only ask for basic info
-    const spouseName = prompt(`Masukkan nama pasangan untuk ${person.nama_lengkap}:`);
-    if (spouseName && spouseName.trim()) {
-      const spouseData = {
-        nama_lengkap: spouseName.trim(),
-        tempat_lahir: '',
-        tanggal_lahir: '',
-        gender: person.gender === 'L' ? 'P' : 'L',
-        alamat: '',
-        pekerjaan: '',
-        no_hp: ''
-      };
+    selectedPersonForSpouse = person;
+    spouseModalMode = 'edit';
+    spouseFormData = {
+      nama_lengkap: '',
+      tempat_lahir: '',
+      tanggal_lahir: '',
+      gender: person.gender === 'L' ? 'P' : 'L',
+      alamat: '',
+      pekerjaan: '',
+      no_hp: ''
+    };
+    showSpouseModal = true;
+  }
 
-      try {
-        trahStore.addSpouse(personId, spouseData);
-      } catch (error) {
-        alert(error.message || 'Gagal menambahkan pasangan');
+  function handleViewSpouse(personId) {
+    const person = persons.find(p => p.id === personId);
+    if (!person || !person.pasangan) return;
+
+    selectedPersonForSpouse = person;
+    spouseModalMode = 'view';
+    showSpouseModal = true;
+  }
+
+  function handleEditSpouse(personId) {
+    const person = persons.find(p => p.id === personId);
+    if (!person || !person.pasangan) return;
+
+    selectedPersonForSpouse = person;
+    spouseModalMode = 'edit';
+    spouseFormData = { ...person.pasangan };
+    showSpouseModal = true;
+  }
+
+  function closeSpouseModal() {
+    showSpouseModal = false;
+    selectedPersonForSpouse = null;
+    spouseFormData = null;
+  }
+
+  function saveSpouseData() {
+    if (!selectedPersonForSpouse || !spouseFormData) return;
+
+    if (!spouseFormData.nama_lengkap || !spouseFormData.nama_lengkap.trim()) {
+      alert('Nama pasangan wajib diisi');
+      return;
+    }
+
+    try {
+      if (selectedPersonForSpouse.pasangan) {
+        // Update existing spouse
+        trahStore.removeSpouse(selectedPersonForSpouse.id);
       }
+      trahStore.addSpouse(selectedPersonForSpouse.id, spouseFormData);
+      closeSpouseModal();
+    } catch (error) {
+      alert(error.message || 'Gagal menyimpan data pasangan');
     }
   }
 
@@ -93,7 +135,9 @@
   const SetSpouseIcon = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>`;
   
   const DeleteIcon = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`;
-  
+
+  const ViewIcon = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`;
+
   const MaleIcon = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="14" r="6"/><line x1="21" y1="3" x2="14" y2="10"/><polyline points="21 3 21 9"/><polyline points="15 3 21 3"/></svg>`;
   
   const FemaleIcon = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="6"/><line x1="12" y1="14" x2="12" y2="23"/><line x1="8" y1="19" x2="16" y2="19"/></svg>`;
@@ -170,13 +214,149 @@
   <div class="pl-modal-overlay" on:click={handleBackdropClick} on:keydown={(e) => e.key === 'Escape' && closeForm()} role="button" tabindex="0">
     <div class="pl-modal">
       <button class="pl-close" on:click={closeForm} aria-label="Tutup">&times;</button>
-      <PersonFormUnifiedTrah 
+      <PersonFormUnifiedTrah
         mode={editingPerson ? 'edit' : 'create'}
         editingPerson={editingPerson}
         parentId={selectedParentId}
         onSuccess={handleFormSuccess}
         onClose={closeForm}
       />
+    </div>
+  </div>
+{/if}
+
+{#if showSpouseModal}
+  <div class="pl-modal-overlay" on:click={closeSpouseModal} on:keydown={(e) => e.key === 'Escape' && closeSpouseModal()} role="button" tabindex="0">
+    <div class="pl-modal" on:click|stopPropagation on:keydown={() => {}} role="dialog" tabindex="-1">
+      <button class="pl-close" on:click={closeSpouseModal} aria-label="Tutup">&times;</button>
+
+      <div class="spouse-modal-content">
+        <h3>{spouseModalMode === 'view' ? 'Detail Pasangan' : 'Data Pasangan'}</h3>
+        <p class="spouse-for">Pasangan dari: <strong>{selectedPersonForSpouse?.nama_lengkap}</strong></p>
+
+        {#if spouseModalMode === 'view' && selectedPersonForSpouse?.pasangan}
+          <div class="spouse-detail-view">
+            <div class="detail-row">
+              <span class="detail-label">Nama Lengkap:</span>
+              <span class="detail-value">{selectedPersonForSpouse.pasangan.nama_lengkap || '-'}</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">Jenis Kelamin:</span>
+              <span class="detail-value">{selectedPersonForSpouse.pasangan.gender === 'L' ? 'Laki-laki' : 'Perempuan'}</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">Tempat Lahir:</span>
+              <span class="detail-value">{selectedPersonForSpouse.pasangan.tempat_lahir || '-'}</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">Tanggal Lahir:</span>
+              <span class="detail-value">{selectedPersonForSpouse.pasangan.tanggal_lahir || '-'}</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">No. HP:</span>
+              <span class="detail-value">{selectedPersonForSpouse.pasangan.no_hp || '-'}</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">Alamat:</span>
+              <span class="detail-value">{selectedPersonForSpouse.pasangan.alamat || '-'}</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">Pekerjaan:</span>
+              <span class="detail-value">{selectedPersonForSpouse.pasangan.pekerjaan || '-'}</span>
+            </div>
+
+            <div class="modal-actions">
+              <button type="button" class="btn-primary" on:click={() => handleEditSpouse(selectedPersonForSpouse.id)}>
+                Edit Data Pasangan
+              </button>
+              <button type="button" class="btn-secondary" on:click={closeSpouseModal}>
+                Tutup
+              </button>
+            </div>
+          </div>
+        {:else if spouseModalMode === 'edit' && spouseFormData}
+          <form on:submit|preventDefault={saveSpouseData} class="spouse-edit-form">
+            <div class="form-group">
+              <label for="spouse-nama">Nama Lengkap *</label>
+              <input
+                id="spouse-nama"
+                type="text"
+                bind:value={spouseFormData.nama_lengkap}
+                placeholder="Nama lengkap pasangan"
+                required
+              />
+            </div>
+
+            <div class="form-group">
+              <label for="spouse-gender">Jenis Kelamin</label>
+              <select id="spouse-gender" bind:value={spouseFormData.gender}>
+                <option value="L">Laki-laki</option>
+                <option value="P">Perempuan</option>
+              </select>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label for="spouse-tempat">Tempat Lahir</label>
+                <input
+                  id="spouse-tempat"
+                  type="text"
+                  bind:value={spouseFormData.tempat_lahir}
+                  placeholder="Tempat lahir"
+                />
+              </div>
+
+              <div class="form-group">
+                <label for="spouse-tanggal">Tanggal Lahir</label>
+                <input
+                  id="spouse-tanggal"
+                  type="date"
+                  bind:value={spouseFormData.tanggal_lahir}
+                />
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="spouse-no-hp">No. HP</label>
+              <input
+                id="spouse-no-hp"
+                type="text"
+                bind:value={spouseFormData.no_hp}
+                placeholder="Contoh: 0812-3456-7890"
+              />
+            </div>
+
+            <div class="form-group">
+              <label for="spouse-alamat">Alamat</label>
+              <textarea
+                id="spouse-alamat"
+                bind:value={spouseFormData.alamat}
+                placeholder="Alamat lengkap"
+                rows="2"
+              />
+            </div>
+
+            <div class="form-group">
+              <label for="spouse-pekerjaan">Pekerjaan</label>
+              <input
+                id="spouse-pekerjaan"
+                type="text"
+                bind:value={spouseFormData.pekerjaan}
+                placeholder="Pekerjaan"
+              />
+            </div>
+
+            <div class="modal-actions">
+              <button type="submit" class="btn-primary">
+                Simpan
+              </button>
+              <button type="button" class="btn-secondary" on:click={closeSpouseModal}>
+                Batal
+              </button>
+            </div>
+          </form>
+        {/if}
+      </div>
     </div>
   </div>
 {/if}
@@ -243,7 +423,15 @@
             <td>{person.no_hp || '-'}</td>
             <td class="alamat">{person.alamat || '-'}</td>
             <td>{person.pekerjaan || '-'}</td>
-            <td>{getSpouseName(person)}</td>
+            <td class="spouse-cell" on:click|stopPropagation>
+              {#if person.pasangan}
+                <span class="spouse-name clickable" on:click={() => handleViewSpouse(person.id)} on:keydown={(e) => e.key === 'Enter' && handleViewSpouse(person.id)} role="button" tabindex="0" title="Klik untuk lihat detail">
+                  {getSpouseName(person)}
+                </span>
+              {:else}
+                <span class="no-spouse">-</span>
+              {/if}
+            </td>
             <td>{getParentName(person)}</td>
             <td class="actions" on:click|stopPropagation data-testid={"cell-actions-" + person.id}>
               <button type="button" class="btn-icon" data-testid={"btn-add-child-" + person.id} on:click|stopPropagation={() => handleAddChild(person.id)} title="Tambah anak" aria-label="Tambah anak">
@@ -253,11 +441,17 @@
                 {@html EditIcon}
               </button>
               {#if person.pasangan}
-                <button type="button" class="btn-icon" data-testid={"btn-remove-spouse-" + person.id} on:click|stopPropagation={() => handleRemoveSpouse(person.id)} title="Hapus pasangan" aria-label="Hapus pasangan">
+                <button type="button" class="btn-icon" data-testid={"btn-view-spouse-" + person.id} on:click|stopPropagation={() => handleViewSpouse(person.id)} title="Lihat detail pasangan" aria-label="Lihat pasangan">
+                  {@html ViewIcon}
+                </button>
+                <button type="button" class="btn-icon" data-testid={"btn-edit-spouse-" + person.id} on:click|stopPropagation={() => handleEditSpouse(person.id)} title="Edit pasangan" aria-label="Edit pasangan">
+                  {@html EditIcon}
+                </button>
+                <button type="button" class="btn-icon danger" data-testid={"btn-remove-spouse-" + person.id} on:click|stopPropagation={() => handleRemoveSpouse(person.id)} title="Hapus pasangan" aria-label="Hapus pasangan">
                   {@html RemoveSpouseIcon}
                 </button>
               {:else}
-                <button type="button" class="btn-icon" data-testid={"btn-set-spouse-" + person.id} on:click|stopPropagation={() => handleSetSpouse(person.id)} title="Set pasangan" aria-label="Set pasangan">
+                <button type="button" class="btn-icon" data-testid={"btn-set-spouse-" + person.id} on:click|stopPropagation={() => handleSetSpouse(person.id)} title="Tambah pasangan" aria-label="Tambah pasangan">
                   {@html SetSpouseIcon}
                 </button>
               {/if}
@@ -522,5 +716,154 @@
 
   .generasi-4 {
     background: #fce4ec;
+  }
+
+  /* Spouse Modal Styles */
+  .spouse-modal-content {
+    padding: 1.5rem;
+  }
+
+  .spouse-modal-content h3 {
+    margin: 0 0 0.5rem 0;
+    color: #333;
+    font-size: 1.4rem;
+    font-weight: 600;
+  }
+
+  .spouse-for {
+    color: #666;
+    font-size: 0.9rem;
+    margin: 0 0 1.5rem 0;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid #e5e7eb;
+  }
+
+  .spouse-detail-view {
+    background: #f9fafb;
+    padding: 1rem;
+    border-radius: 6px;
+  }
+
+  .detail-row {
+    display: flex;
+    margin-bottom: 0.75rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid #e5e7eb;
+  }
+
+  .detail-row:last-of-type {
+    margin-bottom: 0;
+    padding-bottom: 0;
+    border-bottom: none;
+  }
+
+  .detail-label {
+    font-weight: 600;
+    color: #374151;
+    min-width: 140px;
+    flex-shrink: 0;
+  }
+
+  .detail-value {
+    color: #6b7280;
+    flex: 1;
+  }
+
+  .spouse-edit-form .form-group {
+    margin-bottom: 1rem;
+  }
+
+  .spouse-edit-form .form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+  }
+
+  .spouse-edit-form label {
+    display: block;
+    margin-bottom: 0.4rem;
+    font-weight: 500;
+    color: #374151;
+    font-size: 0.9rem;
+  }
+
+  .spouse-edit-form input[type="text"],
+  .spouse-edit-form input[type="date"],
+  .spouse-edit-form select,
+  .spouse-edit-form textarea {
+    width: 100%;
+    padding: 0.6rem;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    font-size: 0.9rem;
+    font-family: inherit;
+    transition: border-color 0.2s;
+  }
+
+  .spouse-edit-form input:focus,
+  .spouse-edit-form select:focus,
+  .spouse-edit-form textarea:focus {
+    outline: none;
+    border-color: #667eea;
+  }
+
+  .spouse-edit-form textarea {
+    resize: vertical;
+  }
+
+  .modal-actions {
+    display: flex;
+    gap: 0.75rem;
+    justify-content: flex-end;
+    padding-top: 1.5rem;
+    margin-top: 1.5rem;
+    border-top: 1px solid #e5e7eb;
+  }
+
+  .modal-actions button {
+    padding: 0.6rem 1.5rem;
+    border-radius: 4px;
+    font-size: 0.95rem;
+    font-weight: 500;
+    cursor: pointer;
+    border: none;
+    transition: all 0.2s;
+  }
+
+  .btn-primary {
+    background: #667eea;
+    color: white;
+  }
+
+  .btn-primary:hover {
+    background: #5568d3;
+  }
+
+  .btn-secondary {
+    background: #9ca3af;
+    color: white;
+  }
+
+  .btn-secondary:hover {
+    background: #6b7280;
+  }
+
+  .spouse-cell {
+    cursor: default;
+  }
+
+  .spouse-name.clickable {
+    color: #667eea;
+    cursor: pointer;
+    text-decoration: underline;
+    text-decoration-style: dotted;
+  }
+
+  .spouse-name.clickable:hover {
+    color: #5568d3;
+  }
+
+  .no-spouse {
+    color: #9ca3af;
   }
 </style>
