@@ -1,5 +1,5 @@
 import { writable, derived } from 'svelte/store';
-import { generateKode, calculateGenerasi, getBirthOrderFromChildren, assignCodes } from '../utils/kodeGenerator.js';
+import { calculateGenerasi, getGenerasiLabel } from '../utils/kodeGenerator.js';
 
 function createTrahStore() {
   const { subscribe, set, update } = writable({
@@ -21,7 +21,7 @@ function createTrahStore() {
       
       const rootPerson = {
         id: rootPersonId,
-        kode: "",
+        kode: rootPersonData.kode || "",
         generasi: 0,
         nama_lengkap: rootPersonData.nama_lengkap,
         tempat_lahir: rootPersonData.tempat_lahir || "",
@@ -29,9 +29,10 @@ function createTrahStore() {
         gender: rootPersonData.gender || "",
         alamat: rootPersonData.alamat || "",
         pekerjaan: rootPersonData.pekerjaan || "",
+        no_hp: rootPersonData.no_hp || "",
         parent_id: null,
         parent2_id: null,
-        pasangan_id: null,
+        pasangan: null,
         children_ids: [],
         birth_order: null,
         is_root: true,
@@ -61,6 +62,10 @@ function createTrahStore() {
       let newPerson = null;
       
       update(state => {
+        if (!personData.nama_lengkap || !personData.nama_lengkap.trim()) {
+          throw new Error("Nama lengkap wajib diisi");
+        }
+
         if (!parentId) {
           const existingRoot = state.persons.find(p => p.is_root === true);
           if (existingRoot) {
@@ -70,31 +75,28 @@ function createTrahStore() {
 
         const id = generateId();
         const parent = parentId ? state.persons.find(p => p.id === parentId) : null;
-        
-        const generasi = calculateGenerasi(parent);
-        const birthOrder = parentId ? getBirthOrderFromChildren(parentId, state.persons) : 0;
-        const kode = parent ? generateKode(parent, birthOrder) : "";
 
-        if (parent && parent.pasangan_id && !parent2Id) {
-          parent2Id = parent.pasangan_id;
-        }
+        const generasi = calculateGenerasi(parent);
+        // Manual kode from user input
+        const kode = personData.kode?.trim() || "";
 
         newPerson = {
           id,
           kode,
           generasi,
-          nama_lengkap: personData.nama_lengkap,
-          tempat_lahir: personData.tempat_lahir || "",
+          nama_lengkap: personData.nama_lengkap.trim(),
+          tempat_lahir: personData.tempat_lahir?.trim() || "",
           tanggal_lahir: personData.tanggal_lahir || "",
-          gender: personData.gender || "",
-          alamat: personData.alamat || "",
-          pekerjaan: personData.pekerjaan || "",
+          gender: personData.gender || "L",
+          alamat: personData.alamat?.trim() || "",
+          pekerjaan: personData.pekerjaan?.trim() || "",
+          no_hp: personData.no_hp?.trim() || "",
           parent_id: parentId,
           parent2_id: parent2Id,
-          pasangan_id: null,
+          pasangan: null,
           children_ids: [],
           birth_order: personData.birth_order || null,
-          is_root: false,
+          is_root: !parentId,
           root_id: state.trah.id,
           created_at: new Date().toISOString()
         };
@@ -102,7 +104,7 @@ function createTrahStore() {
         if (parent) {
           const updatedPersons = state.persons.map(p => 
             p.id === parentId 
-              ? { ...p, children_ids: [...p.children_ids, id] }
+              ? { ...p, children_ids: [...(p.children_ids || []), id] }
               : p
           );
           state.persons = [...updatedPersons, newPerson];
@@ -111,14 +113,14 @@ function createTrahStore() {
         }
 
         if (parent2Id) {
-          state.persons = state.persons.map(p => 
-            p.id === parent2Id 
+          state.persons = state.persons.map(p =>
+            p.id === parent2Id
               ? { ...p, children_ids: [...(p.children_ids || []), id] }
               : p
           );
         }
 
-        assignCodes(state.persons);
+        // No longer auto-generate codes - user inputs manually
 
         saveTrahToStorage(state.trah, state.persons);
         return state;
@@ -129,10 +131,27 @@ function createTrahStore() {
 
     updatePerson(personId, updates) {
       update(state => {
-        state.persons = state.persons.map(p => 
-          p.id === personId ? { ...p, ...updates } : p
+        const person = state.persons.find(p => p.id === personId);
+        if (!person) {
+          throw new Error("Person tidak ditemukan");
+        }
+
+        const sanitizedUpdates = {
+          ...updates,
+          kode: updates.kode?.trim() ?? person.kode,
+          nama_lengkap: updates.nama_lengkap?.trim() || person.nama_lengkap,
+          tempat_lahir: updates.tempat_lahir?.trim() ?? person.tempat_lahir,
+          tanggal_lahir: updates.tanggal_lahir ?? person.tanggal_lahir,
+          gender: updates.gender || person.gender,
+          alamat: updates.alamat?.trim() ?? person.alamat,
+          pekerjaan: updates.pekerjaan?.trim() ?? person.pekerjaan,
+          no_hp: updates.no_hp?.trim() ?? person.no_hp
+        };
+
+        state.persons = state.persons.map(p =>
+          p.id === personId ? { ...p, ...sanitizedUpdates } : p
         );
-        assignCodes(state.persons);
+        // No longer auto-generate codes
         saveTrahToStorage(state.trah, state.persons);
         return state;
       });
@@ -160,92 +179,71 @@ function createTrahStore() {
         }
 
         state.persons = state.persons.filter(p => p.id !== personId);
-        assignCodes(state.persons);
+        // No longer auto-generate codes
         saveTrahToStorage(state.trah, state.persons);
         return state;
       });
     },
 
-    setSpouse(personId, spouseId) {
+    setSpouse(personId, spouseData) {
       update(state => {
+        const person = state.persons.find(p => p.id === personId);
+
+        if (!person) {
+          throw new Error("Person tidak ditemukan");
+        }
+
+        if (person.pasangan) {
+          throw new Error(`${person.nama_lengkap} sudah memiliki pasangan`);
+        }
+
+        if (!spouseData.nama_lengkap || !spouseData.nama_lengkap.trim()) {
+          throw new Error("Nama pasangan wajib diisi");
+        }
+
+        const pasanganObj = {
+          nama_lengkap: spouseData.nama_lengkap.trim(),
+          tempat_lahir: spouseData.tempat_lahir?.trim() || "",
+          tanggal_lahir: spouseData.tanggal_lahir || "",
+          gender: spouseData.gender || (person.gender === 'L' ? 'P' : 'L'),
+          alamat: spouseData.alamat?.trim() || "",
+          pekerjaan: spouseData.pekerjaan?.trim() || "",
+          no_hp: spouseData.no_hp?.trim() || ""
+        };
+
         state.persons = state.persons.map(p => {
-          if (p.id === personId) return { ...p, pasangan_id: spouseId };
-          if (p.id === spouseId) return { ...p, pasangan_id: personId };
+          if (p.id === personId) return { ...p, pasangan: pasanganObj };
           return p;
         });
+
         saveTrahToStorage(state.trah, state.persons);
         return state;
       });
     },
 
     addSpouse(personId, spouseData) {
-      let newSpouse = null;
-      
-      update(state => {
-        const person = state.persons.find(p => p.id === personId);
-        if (!person) {
-          throw new Error("Person tidak ditemukan");
-        }
-        
-        if (person.pasangan_id) {
-          throw new Error("Person sudah memiliki pasangan");
-        }
-
-        const spouseId = generateId();
-        
-        newSpouse = {
-          id: spouseId,
-          kode: "",
-          generasi: person.generasi,
-          nama_lengkap: spouseData.nama_lengkap,
-          tempat_lahir: spouseData.tempat_lahir || "",
-          tanggal_lahir: spouseData.tanggal_lahir || "",
-          gender: spouseData.gender || "",
-          alamat: spouseData.alamat || "",
-          pekerjaan: spouseData.pekerjaan || "",
-          parent_id: null,
-          parent2_id: null,
-          pasangan_id: personId,
-          children_ids: person.children_ids || [],
-          birth_order: null,
-          is_root: false,
-          root_id: state.trah.id,
-          created_at: new Date().toISOString()
-        };
-
-        state.persons = state.persons.map(p => 
-          p.id === personId ? { ...p, pasangan_id: spouseId } : p
-        );
-        
-        state.persons = [...state.persons, newSpouse];
-
-        if (person.children_ids && person.children_ids.length > 0) {
-          state.persons = state.persons.map(p => {
-            if (person.children_ids.includes(p.id) && p.parent_id === personId) {
-              return { ...p, parent2_id: spouseId };
-            }
-            return p;
-          });
-        }
-
-        saveTrahToStorage(state.trah, state.persons);
-        return state;
-      });
-
-      return newSpouse;
+      // This function is now an alias for setSpouse since spouse is a simple object
+      return this.setSpouse(personId, spouseData);
     },
 
     removeSpouse(personId) {
       update(state => {
         const person = state.persons.find(p => p.id === personId);
-        if (person && person.pasangan_id) {
-          state.persons = state.persons.map(p => {
-            if (p.id === personId || p.id === person.pasangan_id) {
-              return { ...p, pasangan_id: null };
-            }
-            return p;
-          });
+        if (!person) {
+          throw new Error("Person tidak ditemukan");
         }
+
+        if (!person.pasangan) {
+          throw new Error("Person tidak memiliki pasangan");
+        }
+
+        state.persons = state.persons.map(p => {
+          if (p.id === personId) {
+            return { ...p, pasangan: null };
+          }
+          return p;
+        });
+
         saveTrahToStorage(state.trah, state.persons);
         return state;
       });
@@ -285,7 +283,7 @@ function createTrahStore() {
           pekerjaan: personData.pekerjaan || "",
           parent_id: parentIds[0] || null,
           parent2_id: parentIds[1] || null,
-          pasangan_id: null,
+          pasangan: null,
           children_ids: [],
           birth_order: personData.birth_order || null,
           is_root: !parentIds[0],
@@ -312,34 +310,22 @@ function createTrahStore() {
           );
         }
 
-        if (spouseData) {
-          const spouseId = generateId();
-          const newSpouse = {
-            id: spouseId,
-            kode: "",
-            generasi: newPerson.generasi,
-            nama_lengkap: spouseData.nama_lengkap,
-            tempat_lahir: spouseData.tempat_lahir || "",
+        if (spouseData && spouseData.nama_lengkap) {
+          const pasanganObj = {
+            nama_lengkap: spouseData.nama_lengkap.trim(),
+            tempat_lahir: spouseData.tempat_lahir?.trim() || "",
             tanggal_lahir: spouseData.tanggal_lahir || "",
-            gender: spouseData.gender || "",
-            alamat: spouseData.alamat || "",
-            pekerjaan: spouseData.pekerjaan || "",
-            parent_id: null,
-            parent2_id: null,
-            pasangan_id: personId,
-            children_ids: [],
-            birth_order: null,
-            is_root: false,
-            root_id: state.trah.id,
-            created_at: new Date().toISOString()
+            gender: spouseData.gender || (newPerson.gender === 'L' ? 'P' : 'L'),
+            alamat: spouseData.alamat?.trim() || "",
+            pekerjaan: spouseData.pekerjaan?.trim() || "",
+            no_hp: spouseData.no_hp?.trim() || ""
           };
 
-          state.persons = state.persons.map(p => 
-            p.id === personId ? { ...p, pasangan_id: spouseId } : p
+          state.persons = state.persons.map(p =>
+            p.id === personId ? { ...p, pasangan: pasanganObj } : p
           );
-          
-          state.persons = [...state.persons, newSpouse];
-          result.spouse = newSpouse;
+
+          result.spouse = pasanganObj;
         }
 
         if (childrenData && childrenData.length > 0) {
@@ -359,8 +345,8 @@ function createTrahStore() {
               alamat: childData.alamat || "",
               pekerjaan: childData.pekerjaan || "",
               parent_id: personId,
-              parent2_id: result.spouse ? result.spouse.id : null,
-              pasangan_id: null,
+              parent2_id: null,
+              pasangan: null,
               children_ids: [],
               birth_order: childData.birth_order || null,
               is_root: false,
@@ -383,7 +369,7 @@ function createTrahStore() {
           });
         }
 
-        assignCodes(state.persons);
+        // No longer auto-generate codes
         saveTrahToStorage(state.trah, state.persons);
         return state;
       });
@@ -442,7 +428,7 @@ function createTrahStore() {
           );
         }
 
-        assignCodes(state.persons);
+        // No longer auto-generate codes
         saveTrahToStorage(state.trah, state.persons);
         return state;
       });
@@ -452,7 +438,7 @@ function createTrahStore() {
       const stored = localStorage.getItem('trah-data');
       if (stored) {
         const data = JSON.parse(stored);
-        assignCodes(data.persons, data.trah);
+        // No longer auto-generate codes on load
         set({
           trah: data.trah,
           persons: data.persons,
@@ -483,13 +469,105 @@ function createTrahStore() {
 
     importData(jsonData) {
       const data = JSON.parse(jsonData);
-      assignCodes(data.persons);
+      // No longer auto-generate codes - preserve imported codes
       set({
         trah: data.trah,
         persons: data.persons,
         initialized: true
       });
       saveTrahToStorage(data.trah, data.persons);
+    },
+
+    validateDataIntegrity() {
+      let issues = [];
+      let state = null;
+      
+      subscribe(s => { state = s; })();
+      
+      if (!state || !state.persons) return { valid: true, issues: [] };
+      
+      const persons = state.persons;
+      const personIds = new Set(persons.map(p => p.id));
+      
+      persons.forEach(person => {
+        if (person.parent_id && !personIds.has(person.parent_id)) {
+          issues.push(`${person.nama_lengkap}: parent_id tidak valid (${person.parent_id})`);
+        }
+        
+        if (person.parent2_id && !personIds.has(person.parent2_id)) {
+          issues.push(`${person.nama_lengkap}: parent2_id tidak valid (${person.parent2_id})`);
+        }
+
+        if (person.pasangan && typeof person.pasangan !== 'object') {
+          issues.push(`${person.nama_lengkap}: pasangan harus berupa object atau null`);
+        }
+
+        if (person.children_ids && person.children_ids.length > 0) {
+          person.children_ids.forEach(childId => {
+            if (!personIds.has(childId)) {
+              issues.push(`${person.nama_lengkap}: children_ids mengandung ID tidak valid (${childId})`);
+            } else {
+              const child = persons.find(p => p.id === childId);
+              if (child && child.parent_id !== person.id && child.parent2_id !== person.id) {
+                issues.push(`${person.nama_lengkap}: anak ${child.nama_lengkap} tidak memiliki parent_id yang sesuai`);
+              }
+            }
+          });
+        }
+      });
+      
+      return {
+        valid: issues.length === 0,
+        issues: issues
+      };
+    },
+
+    rebuildDataIntegrity() {
+      update(state => {
+        const persons = state.persons;
+        
+        persons.forEach(person => {
+          if (person.children_ids) {
+            person.children_ids = person.children_ids.filter(childId => 
+              persons.some(p => p.id === childId)
+            );
+          }
+          
+          if (person.parent_id && !persons.some(p => p.id === person.parent_id)) {
+            person.parent_id = null;
+          }
+          
+          if (person.parent2_id && !persons.some(p => p.id === person.parent2_id)) {
+            person.parent2_id = null;
+          }
+
+          // Ensure pasangan is null or object (migration from old pasangan_id format)
+          if (person.pasangan_id !== undefined) {
+            person.pasangan = null;
+            delete person.pasangan_id;
+          }
+        });
+        
+        persons.forEach(person => {
+          if (person.parent_id) {
+            const parent = persons.find(p => p.id === person.parent_id);
+            if (parent && !parent.children_ids.includes(person.id)) {
+              parent.children_ids.push(person.id);
+            }
+          }
+          
+          if (person.parent2_id) {
+            const parent2 = persons.find(p => p.id === person.parent2_id);
+            if (parent2 && !parent2.children_ids.includes(person.id)) {
+              parent2.children_ids.push(person.id);
+            }
+          }
+        });
+
+        // No longer auto-generate codes
+        saveTrahToStorage(state.trah, state.persons);
+        return state;
+      });
     }
   };
 }

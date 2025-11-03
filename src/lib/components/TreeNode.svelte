@@ -22,9 +22,8 @@
   }
   
   function getSpouseName() {
-    if (!person.pasangan_id) return null;
-    const spouse = persons.find(p => p.id === person.pasangan_id);
-    return spouse ? spouse.nama_lengkap : null;
+    if (!person.pasangan) return null;
+    return person.pasangan.nama_lengkap || null;
   }
 </script>
 
@@ -41,7 +40,7 @@
     <div class="person-info">
       <span class="kode">{person.kode || 'ROOT'}</span>
       <span class="nama">{person.nama_lengkap}</span>
-      {#if person.pasangan_id}
+      {#if person.pasangan}
         <span class="spouse">& {getSpouseName()}</span>
       {/if}
     </div>

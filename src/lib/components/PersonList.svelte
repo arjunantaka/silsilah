@@ -1,12 +1,13 @@
 <script>
   import { trahStore } from '../stores/trah.js';
-  import { getGenerasiLabel } from '../utils/kodeGenerator.js';
+  import { getGenerasiLabel, sortByKodeHierarchical, sortByKodeSequential } from '../utils/kodeGenerator.js';
   import PersonFormUnifiedTrah from './PersonFormUnifiedTrah.svelte';
 
   export let onSelectPerson = null;
 
   let searchQuery = "";
   let filterGenerasi = -1;
+  let sortMode = 'hierarchical'; // 'hierarchical' or 'sequential'
   let showForm = false;
   let selectedParentId = null;
   let editingPerson = null;
@@ -17,10 +18,15 @@
                           (p.kode && p.kode.toLowerCase().includes(searchQuery.toLowerCase()));
     const matchesGenerasi = filterGenerasi === -1 || p.generasi === filterGenerasi;
     return matchesSearch && matchesGenerasi;
-  }).sort((a, b) => {
-    if (a.generasi !== b.generasi) return a.generasi - b.generasi;
-			return (a.kode || '').localeCompare(b.kode || '');
   });
+
+  $: sortedPersons = (() => {
+    if (sortMode === 'hierarchical') {
+      return sortByKodeHierarchical(filteredPersons);
+    } else {
+      return sortByKodeSequential(filteredPersons);
+    }
+  })();
 
   function handleAddChild(parentId) {
     selectedParentId = parentId;
@@ -51,40 +57,24 @@
     const person = persons.find(p => p.id === personId);
     if (!person) return;
 
-    const choice = confirm(`Tambah pasangan untuk ${person.nama_lengkap}?\n\nPilihan:\n1. Pilih dari anggota yang ada\n2. Tambah pasangan baru\n\nKlik OK untuk pilih dari yang ada, Cancel untuk tambah baru`);
-    
-    if (choice) {
-      const potentialSpouses = persons.filter(p => 
-        p.id !== personId && 
-        p.generasi === person.generasi && 
-        !p.pasangan_id &&
-        p.id !== person.parent_id &&
-        p.parent_id !== person.id
-      );
+    // Spouse is now a simple object (not a trah member), so we only ask for basic info
+    const spouseName = prompt(`Masukkan nama pasangan untuk ${person.nama_lengkap}:`);
+    if (spouseName && spouseName.trim()) {
+      const spouseData = {
+        nama_lengkap: spouseName.trim(),
+        tempat_lahir: '',
+        tanggal_lahir: '',
+        gender: person.gender === 'L' ? 'P' : 'L',
+        alamat: '',
+        pekerjaan: '',
+        no_hp: ''
+      };
 
-      if (potentialSpouses.length === 0) {
-        alert("Tidak ada calon pasangan yang tersedia di generasi yang sama");
-        return;
+      try {
+        trahStore.addSpouse(personId, spouseData);
+      } catch (error) {
+        alert(error.message || 'Gagal menambahkan pasangan');
       }
-
-      const spouseList = potentialSpouses.map((p, i) => 
-        `${i + 1}. ${p.nama_lengkap} (${p.kode || 'Root'})`
-      ).join('\n');
-
-      const selection = prompt(`Pilih pasangan untuk ${person.nama_lengkap}:\n\n${spouseList}\n\nMasukkan nomor:`);
-      
-      if (selection) {
-        const index = parseInt(selection) - 1;
-        if (index >= 0 && index < potentialSpouses.length) {
-          trahStore.setSpouse(personId, potentialSpouses[index].id);
-        } else {
-          alert("Pilihan tidak valid");
-        }
-      }
-    } else {
-      selectedParentId = personId;
-      editingPerson = { isSpouse: true };
-      showForm = true;
     }
   }
 
@@ -125,9 +115,8 @@
   }
 
   function getSpouseName(person) {
-    if (!person.pasangan_id) return '-';
-    const spouse = persons.find(p => p.id === person.pasangan_id);
-    return spouse ? spouse.nama_lengkap : '-';
+    if (!person.pasangan) return '-';
+    return person.pasangan.nama_lengkap || '-';
   }
 
   function getParentName(person) {
@@ -178,7 +167,7 @@
 
 <div class="person-list-container">
 {#if showForm}
-  <div class="pl-modal-overlay" on:click={handleBackdropClick}>
+  <div class="pl-modal-overlay" on:click={handleBackdropClick} on:keydown={(e) => e.key === 'Escape' && closeForm()} role="button" tabindex="0">
     <div class="pl-modal">
       <button class="pl-close" on:click={closeForm} aria-label="Tutup">&times;</button>
       <PersonFormUnifiedTrah 
@@ -210,6 +199,11 @@
       <option value={4}>Canggah</option>
     </select>
 
+    <select bind:value={sortMode} class="filter-select" data-testid="select-sort-mode">
+      <option value="hierarchical">Urutan Hierarkis (A1→A1P1→A2)</option>
+      <option value="sequential">Urutan Sequential (A1→A2→A1P1)</option>
+    </select>
+
     <button class="add-btn" data-testid="btn-add-person" on:click={() => { showForm = true; selectedParentId = null; editingPerson = null; }}>
       + Tambah Anggota
     </button>
@@ -222,6 +216,7 @@
           <th>Kode</th>
           <th>Nama</th>
           <th>TTL</th>
+          <th>No. HP</th>
           <th>Alamat</th>
           <th>Pekerjaan</th>
           <th>Pasangan</th>
@@ -230,7 +225,7 @@
         </tr>
       </thead>
       <tbody>
-        {#each filteredPersons as person (person.id)}
+        {#each sortedPersons as person (person.id)}
           <tr class="generasi-{person.generasi}" class:clickable={onSelectPerson} on:click={() => onSelectPerson?.(person)} data-testid={"row-person-" + person.id}>
             <td>
               <span class="kode-badge">{person.is_root ? 'ROOT' : (person.kode || '-')}</span>
@@ -245,6 +240,7 @@
               {person.nama_lengkap}
             </td>
             <td>{formatTTL(person)}</td>
+            <td>{person.no_hp || '-'}</td>
             <td class="alamat">{person.alamat || '-'}</td>
             <td>{person.pekerjaan || '-'}</td>
             <td>{getSpouseName(person)}</td>
@@ -256,7 +252,7 @@
               <button type="button" class="btn-icon" data-testid={"btn-edit-person-" + person.id} on:click|stopPropagation={() => handleEdit(person)} title="Edit" aria-label="Edit">
                 {@html EditIcon}
               </button>
-              {#if person.pasangan_id}
+              {#if person.pasangan}
                 <button type="button" class="btn-icon" data-testid={"btn-remove-spouse-" + person.id} on:click|stopPropagation={() => handleRemoveSpouse(person.id)} title="Hapus pasangan" aria-label="Hapus pasangan">
                   {@html RemoveSpouseIcon}
                 </button>

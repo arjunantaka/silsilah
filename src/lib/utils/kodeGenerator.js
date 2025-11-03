@@ -1,102 +1,137 @@
-export function generateKode(parent, birthOrder) {
-  if (!parent) return "";
-  
-  const generasiLabel = ["A", "P", "B", "C"];
-  const parentKode = parent.kode || "";
-  const generasi = parent.generasi + 1;
-  
-  if (generasi > 4) {
-    throw new Error("Maximum generasi (Canggah) reached");
-  }
-  
-  const label = generasiLabel[generasi - 1];
-  return `${parentKode}${label}${birthOrder}`;
-}
+// Kode Generator & Sorting Utilities for Silsilah Trah
 
+/**
+ * Calculate generasi (generation) based on parent
+ */
 export function calculateGenerasi(parent) {
   if (!parent) return 0;
   return parent.generasi + 1;
 }
 
+/**
+ * Get generasi label in Indonesian
+ */
 export function getGenerasiLabel(generasi) {
   const labels = {
     0: "Root/Trah",
     1: "Anak",
     2: "Putu/Cucu",
     3: "Buyut",
-    4: "Canggah"
+    4: "Canggah",
+    5: "Wareng"
   };
-  return labels[generasi] || "Unknown";
+  return labels[generasi] || `Generasi ${generasi}`;
 }
 
-export function getBirthOrderFromChildren(parentId, persons) {
-  const siblings = persons.filter(p => p.parent_id === parentId);
-  return siblings.length + 1;
+/**
+ * Parse kode into hierarchical segments for sorting
+ * Example: "A1P2B3" → ["A1", "P2", "B3"]
+ */
+function parseKodeSegments(kode) {
+  if (!kode || kode.trim() === '') return [];
+
+  const segments = [];
+  const regex = /([A-Z]+)(\d+)/g;
+  let match;
+
+  while ((match = regex.exec(kode)) !== null) {
+    segments.push(match[0]); // Full segment like "A1", "P2"
+  }
+
+  return segments;
 }
 
-export function assignCodes(persons) {
-  if (!persons || persons.length === 0) return persons;
+/**
+ * Compare two kode strings hierarchically
+ * Returns: -1 if a < b, 1 if a > b, 0 if equal
+ */
+function compareKodeHierarchical(kodeA, kodeB) {
+  // Empty kodes go first (root)
+  if (!kodeA && !kodeB) return 0;
+  if (!kodeA) return -1;
+  if (!kodeB) return 1;
 
-  const LEVEL_CODES = ['', 'A', 'P', 'B', 'C'];
-  
-  const byId = new Map(persons.map(p => [p.id, p]));
-  const childrenMap = new Map();
-  
-  for (const p of persons) {
-    if (p.parent_id) {
-      if (!childrenMap.has(p.parent_id)) {
-        childrenMap.set(p.parent_id, []);
-      }
-      childrenMap.get(p.parent_id).push(p);
+  const segmentsA = parseKodeSegments(kodeA);
+  const segmentsB = parseKodeSegments(kodeB);
+
+  // Compare segment by segment
+  const maxLength = Math.max(segmentsA.length, segmentsB.length);
+
+  for (let i = 0; i < maxLength; i++) {
+    const segA = segmentsA[i];
+    const segB = segmentsB[i];
+
+    // If one is shorter, it comes first (parent before children)
+    if (!segA) return -1;
+    if (!segB) return 1;
+
+    // Extract letter and number from segment
+    const matchA = segA.match(/([A-Z]+)(\d+)/);
+    const matchB = segB.match(/([A-Z]+)(\d+)/);
+
+    if (!matchA || !matchB) {
+      // Fallback to string compare
+      return segA.localeCompare(segB);
     }
+
+    const letterA = matchA[1];
+    const letterB = matchB[1];
+    const numA = parseInt(matchA[2], 10);
+    const numB = parseInt(matchB[2], 10);
+
+    // Compare letters first (A, P, B, C, W...)
+    if (letterA !== letterB) {
+      return letterA.localeCompare(letterB);
+    }
+
+    // Same letter, compare numbers
+    if (numA !== numB) {
+      return numA - numB;
+    }
+
+    // Continue to next segment if equal
   }
-  
-  const root = persons.find(p => p.is_root === true);
-  if (!root) {
-    console.warn('Root tidak ditemukan, tidak bisa assign kode');
-    return persons;
-  }
-  
-  root.kode = '';
-  root.generasi = 0;
-  
-  function sortChildren(list) {
-    return list.sort((a, b) => {
-      const ba = a.birth_order;
-      const bb = b.birth_order;
-      
-      const hasA = ba !== null && ba !== undefined && ba !== '';
-      const hasB = bb !== null && bb !== undefined && bb !== '';
-      
-      if (hasA && hasB) {
-        return Number(ba) - Number(bb);
-      }
-      
-      if (hasA && !hasB) return -1;
-      if (!hasA && hasB) return 1;
-      
-      const ta = a.tanggal_lahir || '';
-      const tb = b.tanggal_lahir || '';
-      if (ta && tb && ta !== tb) return ta.localeCompare(tb);
-      return a.nama_lengkap.localeCompare(b.nama_lengkap);
-    });
-  }
-  
-  function traverse(node, depth, parentCode) {
-    const kids = childrenMap.get(node.id) || [];
-    const ordered = sortChildren(kids);
-    const levelLetter = LEVEL_CODES[depth] || ('L' + depth);
-    
-    ordered.forEach((child, idx) => {
-      const seq = idx + 1;
-      const codePart = levelLetter + seq;
-      child.kode = (parentCode || '') + codePart;
-      child.generasi = depth;
-      traverse(child, depth + 1, child.kode);
-    });
-  }
-  
-  traverse(root, 1, root.kode);
-  
-  return persons;
+
+  return 0;
+}
+
+/**
+ * Sort persons hierarchically by kode (tree depth-first)
+ * Example order: A1, A1P1, A1P1B1, A1P2, A2, A2P1
+ */
+export function sortByKodeHierarchical(persons) {
+  if (!persons || persons.length === 0) return [];
+
+  return [...persons].sort((a, b) => {
+    return compareKodeHierarchical(a.kode, b.kode);
+  });
+}
+
+/**
+ * Sort persons sequentially (generasi first, then kode)
+ * Example order: A1, A2, A3, A1P1, A1P2, A2P1
+ */
+export function sortByKodeSequential(persons) {
+  if (!persons || persons.length === 0) return [];
+
+  return [...persons].sort((a, b) => {
+    // Sort by generasi first
+    if (a.generasi !== b.generasi) {
+      return a.generasi - b.generasi;
+    }
+
+    // Then by kode
+    return (a.kode || '').localeCompare(b.kode || '');
+  });
+}
+
+/**
+ * Sort persons by name alphabetically
+ */
+export function sortByName(persons) {
+  if (!persons || persons.length === 0) return [];
+
+  return [...persons].sort((a, b) => {
+    return a.nama_lengkap.localeCompare(b.nama_lengkap);
+  });
 }

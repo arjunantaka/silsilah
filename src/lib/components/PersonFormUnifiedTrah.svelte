@@ -7,19 +7,28 @@
   export let onClose = () => {};
   export let onSuccess = () => {};
 
-  let formData = {
-    nama_lengkap: '',
-    tempat_lahir: '',
-    tanggal_lahir: '',
-    gender: 'L',
-    alamat: '',
-    pekerjaan: ''
-  };
+  // Default form data with null safety
+  function getDefaultFormData() {
+    return {
+      kode: '',
+      nama_lengkap: '',
+      tempat_lahir: '',
+      tanggal_lahir: '',
+      gender: 'L',
+      alamat: '',
+      pekerjaan: '',
+      no_hp: ''
+    };
+  }
+
+  let formData = getDefaultFormData();
 
   let selectedParentIds = [];
   let editingParents = false;
-  let spouseData = { nama_lengkap: '', tempat_lahir: '', tanggal_lahir: '', gender: 'P', alamat: '', pekerjaan: '' };
+  let spouseData = null;
   let addSpouse = false;
+  let selectedExistingSpouseId = null;
+  let spouseMode = 'none'; // 'none', 'existing', 'new'
   let errorMessage = '';
   let isSubmitting = false;
 
@@ -37,6 +46,16 @@
     selectedParentIds = [parentId];
   }
 
+  $: if (spouseMode === 'new') {
+    if (!spouseData) {
+      const oppositeGender = formData.gender === 'L' ? 'P' : 'L';
+      spouseData = getDefaultSpouseData(oppositeGender);
+    }
+  } else if (spouseMode !== 'new' && spouseData) {
+    // Reset spouse data when mode changes away from 'new'
+    spouseData = null;
+  }
+
   function loadPersonData() {
     if (!editingPerson || !editingPerson.id) return;
     
@@ -44,32 +63,46 @@
     if (!person) return;
 
     formData = {
+      kode: person.kode || '',
       nama_lengkap: person.nama_lengkap || '',
       tempat_lahir: person.tempat_lahir || '',
       tanggal_lahir: person.tanggal_lahir || '',
       gender: person.gender || 'L',
       alamat: person.alamat || '',
-      pekerjaan: person.pekerjaan || ''
+      pekerjaan: person.pekerjaan || '',
+      no_hp: person.no_hp || ''
     };
 
     selectedParentIds = [];
     if (person.parent_id) selectedParentIds.push(person.parent_id);
     if (person.parent2_id) selectedParentIds.push(person.parent2_id);
+    
+    spouseMode = 'none';
+    selectedExistingSpouseId = null;
+    spouseData = null;
   }
 
-  function resetForm() {
-    formData = {
+  function getDefaultSpouseData(oppositeGender = 'P') {
+    return {
       nama_lengkap: '',
       tempat_lahir: '',
       tanggal_lahir: '',
-      gender: 'L',
+      gender: oppositeGender,
       alamat: '',
-      pekerjaan: ''
+      pekerjaan: '',
+      no_hp: ''
     };
+  }
+
+  function resetForm() {
+    formData = getDefaultFormData();
     selectedParentIds = [];
     spouseData = null;
     addSpouse = false;
+    selectedExistingSpouseId = null;
+    spouseMode = 'none';
     errorMessage = '';
+    editingParents = false;
   }
 
   function handleCancel() {
@@ -95,16 +128,53 @@
     return `${person.nama_lengkap} (${person.kode || gen})`;
   }
 
-  async function handleSubmit() {
-    errorMessage = '';
-    
-    if (!formData.nama_lengkap.trim()) {
-      errorMessage = 'Nama lengkap wajib diisi';
-      return;
+  function validateForm() {
+    // Validate main form data
+    if (!formData.nama_lengkap || !formData.nama_lengkap.trim()) {
+      return 'Nama lengkap wajib diisi';
     }
 
-    if (addSpouse && spouseData && !spouseData.nama_lengkap.trim()) {
-      errorMessage = 'Nama pasangan wajib diisi';
+    // Validate kode uniqueness (if provided)
+    if (formData.kode && formData.kode.trim()) {
+      const trimmedKode = formData.kode.trim();
+      const duplicateKode = persons.find(p => {
+        // When editing, exclude current person from duplicate check
+        if (mode === 'edit' && editingPerson && p.id === editingPerson.id) {
+          return false;
+        }
+        return p.kode === trimmedKode;
+      });
+
+      if (duplicateKode) {
+        return `Kode "${trimmedKode}" sudah digunakan oleh ${duplicateKode.nama_lengkap}`;
+      }
+    }
+
+    // Validate spouse data if mode is 'new'
+    if (spouseMode === 'new') {
+      if (!spouseData || !spouseData.nama_lengkap || !spouseData.nama_lengkap.trim()) {
+        return 'Nama pasangan wajib diisi ketika menambah pasangan baru';
+      }
+    }
+
+
+    // Prevent circular parent relationships
+    if (mode === 'edit' && editingPerson && editingParents) {
+      if (selectedParentIds.includes(editingPerson.id)) {
+        return 'Seseorang tidak bisa menjadi orang tua dirinya sendiri';
+      }
+    }
+
+    return null;
+  }
+
+  async function handleSubmit() {
+    errorMessage = '';
+
+    // Validate form
+    const validationError = validateForm();
+    if (validationError) {
+      errorMessage = validationError;
       return;
     }
 
@@ -113,38 +183,77 @@
     try {
       if (mode === 'create') {
         const parentIds = selectedParentIds.length > 0 ? selectedParentIds : [];
-        const newPersonId = await trahStore.addPerson(formData, parentIds);
+        const parent1Id = parentIds[0] || null;
+        const parent2Id = parentIds[1] || null;
 
-        if (addSpouse && spouseData && spouseData.nama_lengkap.trim()) {
-          const spouseId = await trahStore.addPerson(spouseData, []);
-          await trahStore.setSpouse(newPersonId, spouseId);
+        // Sanitize form data before saving
+        const sanitizedFormData = {
+          kode: (formData.kode || '').trim(),
+          nama_lengkap: formData.nama_lengkap.trim(),
+          tempat_lahir: (formData.tempat_lahir || '').trim(),
+          tanggal_lahir: formData.tanggal_lahir || '',
+          gender: formData.gender || 'L',
+          alamat: (formData.alamat || '').trim(),
+          pekerjaan: (formData.pekerjaan || '').trim(),
+          no_hp: (formData.no_hp || '').trim()
+        };
+
+        const newPerson = trahStore.addPerson(sanitizedFormData, parent1Id, parent2Id);
+        const newPersonId = newPerson.id;
+
+        // Handle spouse creation (spouse is now stored as simple object, not as trah member)
+        if (spouseMode === 'new' && spouseData && spouseData.nama_lengkap.trim()) {
+          const sanitizedSpouseData = {
+            nama_lengkap: spouseData.nama_lengkap.trim(),
+            tempat_lahir: (spouseData.tempat_lahir || '').trim(),
+            tanggal_lahir: spouseData.tanggal_lahir || '',
+            gender: spouseData.gender || 'P',
+            alamat: (spouseData.alamat || '').trim(),
+            pekerjaan: (spouseData.pekerjaan || '').trim(),
+            no_hp: (spouseData.no_hp || '').trim()
+          };
+          trahStore.addSpouse(newPersonId, sanitizedSpouseData);
         }
+        // Note: 'existing' mode removed since spouse is no longer a trah member
 
         resetForm();
-        onSuccess();
+        onSuccess(newPersonId);
       } else if (mode === 'edit' && editingPerson && editingPerson.id) {
-        await trahStore.updatePerson(editingPerson.id, formData);
+        // Sanitize update data
+        const sanitizedUpdates = {
+          kode: (formData.kode || '').trim(),
+          nama_lengkap: formData.nama_lengkap.trim(),
+          tempat_lahir: (formData.tempat_lahir || '').trim(),
+          tanggal_lahir: formData.tanggal_lahir || '',
+          gender: formData.gender || 'L',
+          alamat: (formData.alamat || '').trim(),
+          pekerjaan: (formData.pekerjaan || '').trim(),
+          no_hp: (formData.no_hp || '').trim()
+        };
+
+        trahStore.updatePerson(editingPerson.id, sanitizedUpdates);
 
         if (editingParents) {
           const currentParentIds = [];
           if (editingPerson.parent_id) currentParentIds.push(editingPerson.parent_id);
           if (editingPerson.parent2_id) currentParentIds.push(editingPerson.parent2_id);
-          
+
           const newParentIds = selectedParentIds;
-          
-          const parentsChanged = 
+
+          const parentsChanged =
             currentParentIds.length !== newParentIds.length ||
             !currentParentIds.every(id => newParentIds.includes(id));
-          
+
           if (parentsChanged) {
-            await trahStore.updateParents(editingPerson.id, newParentIds);
+            trahStore.updateParents(editingPerson.id, newParentIds);
           }
         }
 
-        onSuccess();
+        onSuccess(editingPerson.id);
       }
     } catch (err) {
       errorMessage = err.message || 'Terjadi kesalahan';
+      console.error('Form submission error:', err);
     } finally {
       isSubmitting = false;
     }
@@ -161,7 +270,7 @@
   <form on:submit|preventDefault={handleSubmit} data-testid="person-form-fields">
     <div class="form-section">
       <h4>Data Pribadi</h4>
-      
+
       <div class="form-group">
         <label for="nama_lengkap">Nama Lengkap *</label>
         <input
@@ -172,6 +281,18 @@
           disabled={isSubmitting}
           required
         />
+      </div>
+
+      <div class="form-group">
+        <label for="kode">Kode Anggota</label>
+        <input
+          id="kode" data-testid="pf-kode"
+          type="text"
+          bind:value={formData.kode}
+          placeholder="Contoh: A1, A1P1, A1P1B1"
+          disabled={isSubmitting}
+        />
+        <p class="hint-text">Kode hierarkis: A=Anak, P=Putu, B=Buyut, C=Canggah, W=Wareng. Kosongkan jika root.</p>
       </div>
 
       <div class="form-row">
@@ -226,6 +347,17 @@
           disabled={isSubmitting}
         />
       </div>
+
+      <div class="form-group">
+        <label for="no_hp">Nomor Handphone</label>
+        <input
+          id="no_hp" data-testid="pf-no_hp"
+          type="text"
+          bind:value={formData.no_hp}
+          placeholder="Contoh: 0812-3456-7890"
+          disabled={isSubmitting}
+        />
+      </div>
     </div>
 
     {#if mode === 'create'}
@@ -256,30 +388,43 @@
         </div>
 
         <div class="form-group">
-          <label>
-            <input
-              type="checkbox" data-testid="chk-add-spouse"
-              bind:checked={addSpouse}
-              disabled={isSubmitting}
-            />
-            Tambah Pasangan Sekaligus
-          </label>
+          <div class="section-label">Pasangan (Opsional)</div>
+          <p class="hint">Pasangan adalah orang dari luar trah (tidak dicatat sebagai anggota trah)</p>
+          
+          <div class="spouse-mode-selector">
+            <label class="radio-option">
+              <input
+                type="radio"
+                bind:group={spouseMode}
+                value="none"
+                disabled={isSubmitting}
+              />
+              Tidak ada pasangan
+            </label>
+
+            <label class="radio-option">
+              <input
+                type="radio"
+                bind:group={spouseMode}
+                value="new"
+                disabled={isSubmitting}
+              />
+              Tambah pasangan baru
+            </label>
+          </div>
         </div>
 
-        {#if addSpouse}
+        {#if spouseMode === 'new'}
           <div class="spouse-form" data-testid="spouse-form">
-            <h5>Data Pasangan</h5>
+            <h5>Data Pasangan Baru</h5>
             <div class="form-group">
               <label for="spouse_nama">Nama Lengkap Pasangan *</label>
               <input
-                 id="spouse_nama" data-testid="spouse-nama"
+                id="spouse_nama" data-testid="spouse-nama"
                 type="text"
                 bind:value={spouseData.nama_lengkap}
                 placeholder="Nama pasangan"
                 disabled={isSubmitting}
-                on:focus={() => {
-                  if (!spouseData) spouseData = { nama_lengkap: '', tempat_lahir: '', tanggal_lahir: '', gender: 'P', alamat: '', pekerjaan: '' };
-                }}
               />
             </div>
 
@@ -287,7 +432,7 @@
               <div class="form-group">
                 <label for="spouse_tempat">Tempat Lahir</label>
                 <input
-                   id="spouse_tempat" data-testid="spouse-tempat"
+                  id="spouse_tempat" data-testid="spouse-tempat"
                   type="text"
                   bind:value={spouseData.tempat_lahir}
                   placeholder="Tempat lahir"
@@ -298,7 +443,7 @@
               <div class="form-group">
                 <label for="spouse_tgl">Tanggal Lahir</label>
                 <input
-                   id="spouse_tgl" data-testid="spouse-tanggal"
+                  id="spouse_tgl" data-testid="spouse-tanggal"
                   type="date"
                   bind:value={spouseData.tanggal_lahir}
                   disabled={isSubmitting}
@@ -308,10 +453,49 @@
 
             <div class="form-group">
               <label for="spouse_gender">Jenis Kelamin</label>
-              <select id="spouse_gender" data-testid="spouse-gender" bind:value={spouseData.gender} disabled={isSubmitting}>
+              <select
+                id="spouse_gender"
+                data-testid="spouse-gender"
+                bind:value={spouseData.gender}
+                disabled={isSubmitting}
+              >
                 <option value="L">Laki-laki</option>
                 <option value="P">Perempuan</option>
               </select>
+            </div>
+
+            <div class="form-group">
+              <label for="spouse_alamat">Alamat</label>
+              <textarea
+                id="spouse_alamat"
+                bind:value={spouseData.alamat}
+                placeholder="Alamat pasangan"
+                rows="2"
+                disabled={isSubmitting}
+              />
+            </div>
+
+            <div class="form-group">
+              <label for="spouse_pekerjaan">Pekerjaan</label>
+              <input
+                id="spouse_pekerjaan"
+                type="text"
+                bind:value={spouseData.pekerjaan}
+                placeholder="Pekerjaan pasangan"
+                disabled={isSubmitting}
+              />
+            </div>
+
+            <div class="form-group">
+              <label for="spouse_no_hp">Nomor Handphone</label>
+              <input
+                id="spouse_no_hp"
+                data-testid="spouse-no_hp"
+                type="text"
+                bind:value={spouseData.no_hp}
+                placeholder="Contoh: 0812-3456-7890"
+                disabled={isSubmitting}
+              />
             </div>
           </div>
         {/if}
@@ -372,11 +556,29 @@
 
         <div class="form-group">
           <div class="section-label">Pasangan</div>
-          {#if editingPerson.pasangan_id}
-            {@const spouse = persons.find(p => p.id === editingPerson.pasangan_id)}
+          {#if editingPerson.pasangan}
             <div class="info-row">
-              <span>{spouse ? spouse.nama_lengkap : '-'}</span>
+              <span class="info-label">Nama:</span>
+              <span>{editingPerson.pasangan.nama_lengkap || '-'}</span>
             </div>
+            {#if editingPerson.pasangan.tempat_lahir || editingPerson.pasangan.tanggal_lahir}
+              <div class="info-row">
+                <span class="info-label">TTL:</span>
+                <span>{editingPerson.pasangan.tempat_lahir || '-'}, {editingPerson.pasangan.tanggal_lahir || '-'}</span>
+              </div>
+            {/if}
+            {#if editingPerson.pasangan.no_hp}
+              <div class="info-row">
+                <span class="info-label">No. HP:</span>
+                <span>{editingPerson.pasangan.no_hp}</span>
+              </div>
+            {/if}
+            {#if editingPerson.pasangan.pekerjaan}
+              <div class="info-row">
+                <span class="info-label">Pekerjaan:</span>
+                <span>{editingPerson.pasangan.pekerjaan}</span>
+              </div>
+            {/if}
           {:else}
             <p class="info-text">Belum ada pasangan (gunakan Relations Manager)</p>
           {/if}
@@ -460,6 +662,13 @@
     color: #6b7280;
     font-size: 0.85rem;
     margin: -0.5rem 0 1rem 0;
+    font-style: italic;
+  }
+
+  .hint-text {
+    color: #6b7280;
+    font-size: 0.8rem;
+    margin: 0.3rem 0 0 0;
     font-style: italic;
   }
 
@@ -658,6 +867,42 @@
 
   .btn-cancel-edit:hover {
     background: #6b7280;
+  }
+
+  .spouse-mode-selector {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+  }
+
+  .radio-option {
+    display: flex;
+    align-items: center;
+    padding: 0.5rem;
+    cursor: pointer;
+  }
+
+  .radio-option input[type="radio"] {
+    margin-right: 0.5rem;
+    cursor: pointer;
+  }
+
+  .spouse-selector-box {
+    margin-top: 1rem;
+    padding: 1rem;
+    background: #f9fafb;
+    border-radius: 6px;
+    border: 1px solid #e5e7eb;
+  }
+
+  .spouse-selector-box label {
+    display: block;
+    margin-bottom: 0.5rem;
+  }
+
+  .spouse-selector-box select {
+    width: 100%;
   }
 
 </style>

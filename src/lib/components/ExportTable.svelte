@@ -1,19 +1,20 @@
 <script>
   import { trahStore } from '../stores/trah.js';
   import { getPersonById, getDescendants } from '../stores/trah.js';
-  import { getGenerasiLabel } from '../utils/kodeGenerator.js';
+  import { getGenerasiLabel, sortByKodeHierarchical, sortByKodeSequential } from '../utils/kodeGenerator.js';
 
   let selectedPersonId = null;
+  let sortMode = 'hierarchical'; // 'hierarchical' or 'sequential'
   let tableData = [];
-  
+
   $: persons = $trahStore.persons;
   $: rootPersonObj = persons.find(p => p.is_root);
-  
+
   $: if (rootPersonObj && !selectedPersonId) {
     selectedPersonId = rootPersonObj.id;
   }
 
-  $: if (selectedPersonId) {
+  $: if (selectedPersonId || sortMode) {
     generateTable();
   }
 
@@ -30,17 +31,26 @@
     }
 
     const descendants = getDescendants(persons, selectedPersonId);
-    tableData = [selectedPerson, ...descendants].map(person => {
-      const pasangan = person.pasangan_id ? getPersonById(persons, person.pasangan_id) : null;
+    let allPersons = [selectedPerson, ...descendants];
+
+    // Apply sorting
+    if (sortMode === 'hierarchical') {
+      allPersons = sortByKodeHierarchical(allPersons);
+    } else {
+      allPersons = sortByKodeSequential(allPersons);
+    }
+
+    tableData = allPersons.map(person => {
       const parent = person.parent_id ? getPersonById(persons, person.parent_id) : null;
-      
+
       return {
         kode: person.kode || "-",
         nama: person.nama_lengkap,
         ttl: `${person.tempat_lahir || "-"}, ${person.tanggal_lahir || "-"}`,
+        no_hp: person.no_hp || "-",
         alamat: person.alamat || "-",
         pekerjaan: person.pekerjaan || "-",
-        pasangan: pasangan ? pasangan.nama_lengkap : "-",
+        pasangan: person.pasangan ? person.pasangan.nama_lengkap : "-",
         orangTua: parent ? parent.nama_lengkap : "-",
         generasi: getGenerasiLabel(person.generasi)
       };
@@ -48,11 +58,12 @@
   }
 
   function exportToCSV() {
-    const headers = ["Kode", "Nama", "TTL", "Alamat", "Pekerjaan", "Pasangan", "Orang Tua", "Generasi"];
+    const headers = ["Kode", "Nama", "TTL", "No. HP", "Alamat", "Pekerjaan", "Pasangan", "Orang Tua", "Generasi"];
     const rows = tableData.map(row => [
       row.kode,
       row.nama,
       row.ttl,
+      row.no_hp,
       row.alamat,
       row.pekerjaan,
       row.pasangan,
@@ -94,8 +105,16 @@
           {/each}
         </select>
       </label>
+
+      <label style="margin-top: 0.5rem;">
+        Mode Urutan:
+        <select bind:value={sortMode} data-testid="select-export-sort-mode">
+          <option value="hierarchical">Hierarkis (A1→A1P1→A2)</option>
+          <option value="sequential">Sequential (A1→A2→A1P1)</option>
+        </select>
+      </label>
     </div>
-    
+
     <div class="buttons" data-testid="export-buttons">
       <button on:click={exportToCSV} disabled={tableData.length === 0} data-testid="btn-export-csv">
         📥 Export CSV
@@ -114,6 +133,7 @@
             <th>Kode</th>
             <th>Nama</th>
             <th>TTL</th>
+            <th>No. HP</th>
             <th>Alamat</th>
             <th>Pekerjaan</th>
             <th>Pasangan</th>
@@ -127,6 +147,7 @@
               <td>{row.kode}</td>
               <td>{row.nama}</td>
               <td>{row.ttl}</td>
+              <td>{row.no_hp}</td>
               <td>{row.alamat}</td>
               <td>{row.pekerjaan}</td>
               <td>{row.pasangan}</td>

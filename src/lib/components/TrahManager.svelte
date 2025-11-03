@@ -86,6 +86,27 @@
     };
     reader.readAsText(file);
   }
+
+  function handleValidate() {
+    const result = trahStore.validateDataIntegrity();
+    if (result.valid) {
+      alert("✅ Data valid! Tidak ada masalah integritas data.");
+    } else {
+      const message = `⚠️ Ditemukan ${result.issues.length} masalah:\n\n${result.issues.join('\n')}`;
+      alert(message);
+    }
+  }
+
+  function handleRebuild() {
+    if (confirm("Rebuild data akan memperbaiki inkonsistensi relasi dan regenerate kode. Lanjutkan?")) {
+      try {
+        trahStore.rebuildDataIntegrity();
+        alert("✅ Data berhasil di-rebuild! Silakan cek kembali data Anda.");
+      } catch (error) {
+        alert("❌ Gagal rebuild data: " + error.message);
+      }
+    }
+  }
 </script>
 
 {#if !isInitialized}
@@ -191,8 +212,10 @@
         <p class="subtitle">Pendiri: {$trahStore.persons.find(p => p.is_root)?.nama_lengkap}</p>
       </div>
       <div class="trah-actions">
+        <button class="secondary" on:click={handleValidate} data-testid="btn-validate-data">Validasi Data</button>
+        <button class="secondary" on:click={handleRebuild} data-testid="btn-rebuild-data">Rebuild Data</button>
         <button class="secondary" on:click={handleExport} data-testid="btn-export-trah">Ekspor Data</button>
-         <button class="danger" on:click={handleReset} data-testid="btn-reset-trah">Reset Trah</button>
+        <button class="danger" on:click={handleReset} data-testid="btn-reset-trah">Reset Trah</button>
       </div>
     </div>
   </div>
