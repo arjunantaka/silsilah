@@ -40,10 +40,12 @@
       allPersons = sortByKodeSequential(allPersons);
     }
 
-    tableData = allPersons.map(person => {
+    tableData = [];
+    allPersons.forEach(person => {
       const parent = person.parent_id ? getPersonById(persons, person.parent_id) : null;
 
-      return {
+      // Add main person row
+      tableData.push({
         kode: person.kode || "-",
         nama: person.nama_lengkap,
         ttl: `${person.tempat_lahir || "-"}, ${person.tanggal_lahir || "-"}`,
@@ -52,8 +54,27 @@
         pekerjaan: person.pekerjaan || "-",
         pasangan: person.pasangan ? person.pasangan.nama_lengkap : "-",
         orangTua: parent ? parent.nama_lengkap : "-",
-        generasi: getGenerasiLabel(person.generasi)
-      };
+        generasi: getGenerasiLabel(person.generasi),
+        isSpouse: false,
+        personId: person.id
+      });
+
+      // Add spouse row if exists (indented, no kode)
+      if (person.pasangan) {
+        tableData.push({
+          kode: "",
+          nama: `  ↳ ${person.pasangan.nama_lengkap} (Pasangan)`,
+          ttl: `${person.pasangan.tempat_lahir || "-"}, ${person.pasangan.tanggal_lahir || "-"}`,
+          no_hp: person.pasangan.no_hp || "-",
+          alamat: person.pasangan.alamat || "-",
+          pekerjaan: person.pasangan.pekerjaan || "-",
+          pasangan: "-",
+          orangTua: "-",
+          generasi: "-",
+          isSpouse: true,
+          personId: person.id
+        });
+      }
     });
   }
 
@@ -143,7 +164,7 @@
         </thead>
         <tbody>
           {#each tableData as row}
-<tr data-testid={`export-row-${row.kode}`}>
+            <tr class:spouse-row={row.isSpouse} data-testid={`export-row-${row.kode || 'spouse-' + row.personId}`}>
               <td>{row.kode}</td>
               <td>{row.nama}</td>
               <td>{row.ttl}</td>
@@ -246,6 +267,14 @@
 
   tbody tr:hover {
     background: #f8f9fa;
+  }
+
+  tbody tr.spouse-row {
+    background: #f9f9f9;
+  }
+
+  tbody tr.spouse-row:hover {
+    background: #f0f0f0;
   }
 
   @media print {
