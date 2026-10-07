@@ -62,7 +62,9 @@
     else if (form.mode === 'anak' && ortu) tambahAnak(ortu.ayah, ortu.ibu, fields)
     else if (form.mode === 'pasangan' && form.targetId) tambahPasangan(form.targetId, fields)
     else if (form.mode === 'edit' && form.targetId) perbarui(form.targetId, fields)
-    ui.update((u) => ({ ...u, form: null, sheetId: null }))
+    // Tutup form saja; sheet yang sedang terbuka tetap tampil dengan data terbaru
+    // (edit → kader ter-update; tambah anak/pasangan → bisa langsung menambah lagi).
+    ui.update((u) => ({ ...u, form: null }))
   }
 </script>
 
