@@ -1,0 +1,9 @@
+# Konfigurasi Cloudflare Pages + KV untuk Silsilah Keluarga.
+# Isi `id` di bawah dengan id namespace asli sebelum deploy (lihat DEPLOY.md).
+name = "silsilah-keluarga"
+compatibility_date = "2025-01-01"
+pages_build_output_dir = "dist"
+
+[[kv_namespaces]]
+binding = "SILSILAH_KV"
+id = "GANTI_DENGAN_ID_NAMESPACE"

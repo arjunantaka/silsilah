@@ -53,3 +53,5 @@ manual-test.html
 # Cache directories
 .cache/
 .parcel-cache/
+# Wrangler lokal
+.wrangler/

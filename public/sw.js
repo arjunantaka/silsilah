@@ -15,6 +15,7 @@ self.addEventListener('fetch', (event) => {
   if (req.method !== 'GET') return
   const url = new URL(req.url)
   if (url.origin !== location.origin) return
+  if (url.pathname.startsWith('/api/')) return // data cloud selalu segar, jangan di-cache
   event.respondWith(
     caches.match(req).then((hit) => {
       if (hit) return hit
