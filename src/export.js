@@ -2,6 +2,10 @@
 import { get } from 'svelte/store'
 import { data, muatJSON } from './store.js'
 
+/**
+ * @import { Anggota } from './store.js'
+ */
+
 export function slugNama() {
   const slug = get(data).nama_keluarga.toLowerCase().replace(/[^a-z0-9]+/g, '-')
   return slug || 'keluarga'
@@ -33,13 +37,19 @@ function kolomCSV(nilai) {
 export function unduhCSV() {
   const d = get(data)
   const byId = new Map(d.anggota.map((a) => [a.id, a.nama]))
-  const baris = [['nama', 'gender', 'lahir', 'wafat', 'ayah', 'ibu', 'pasangan', 'catatan']]
+  const baris = [
+    ['nama', 'kode', 'gender', 'tempat_lahir', 'lahir', 'wafat', 'alamat', 'pekerjaan', 'ayah', 'ibu', 'pasangan', 'catatan'],
+  ]
   for (const a of d.anggota) {
     baris.push([
       a.nama,
+      a.kode || '',
       a.gender,
+      a.tempat_lahir,
       a.lahir,
       a.wafat,
+      a.alamat,
+      a.pekerjaan,
       a.ayah ? byId.get(a.ayah) || '' : '',
       a.ibu ? byId.get(a.ibu) || '' : '',
       (a.pasangan || []).map((p) => byId.get(p) || '').filter(Boolean).join('; '),
@@ -48,6 +58,52 @@ export function unduhCSV() {
   }
   const csv = '\uFEFF' + baris.map((r) => r.map(kolomCSV).join(',')).join('\r\n')
   unduh(new Blob([csv], { type: 'text/csv;charset=utf-8' }), `silsilah-${slugNama()}.csv`)
+}
+
+// Tabel keturunan: orang akarnya di baris pertama, lalu keturunan BFS per generasi
+// (anak → putu → buyut → ...) hingga terbawah. seen menahan siklus dari file impor rusak.
+/** @param {string} akarId */
+export function unduhKeturunanCSV(akarId) {
+  const d = get(data)
+  const byId = new Map(d.anggota.map((a) => [a.id, a]))
+  const akar = byId.get(akarId)
+  if (!akar) return
+
+  const urut = [akar]
+  const seen = new Set([akarId])
+  let batas = [akarId]
+  while (batas.length > 0) {
+    const gen = d.anggota
+      .filter(
+        (c) =>
+          !seen.has(c.id) &&
+          ((c.ayah !== null && batas.includes(c.ayah)) || (c.ibu !== null && batas.includes(c.ibu))),
+      )
+      .map((c) => c.id)
+    for (const id of gen) {
+      seen.add(id)
+      urut.push(/** @type {Anggota} */ (byId.get(id)))
+    }
+    batas = gen
+  }
+
+  const baris = [['kode', 'nama', 'tempat tanggal lahir', 'alamat', 'pekerjaan', 'suami/istri', 'orang tua']]
+  for (const a of urut) {
+    baris.push([
+      a.kode || '',
+      a.nama,
+      [a.tempat_lahir, a.lahir].filter(Boolean).join(', '),
+      a.alamat,
+      a.pekerjaan,
+      (a.pasangan || []).map((p) => byId.get(p)?.nama || '').filter(Boolean).join('; '),
+      [a.ayah ? byId.get(a.ayah)?.nama || '' : '', a.ibu ? byId.get(a.ibu)?.nama || '' : '']
+        .filter(Boolean)
+        .join(' & '),
+    ])
+  }
+  const csv = '\uFEFF' + baris.map((r) => r.map(kolomCSV).join(',')).join('\r\n')
+  const slug = akar.nama.toLowerCase().replace(/[^a-z0-9]+/g, '-')
+  unduh(new Blob([csv], { type: 'text/csv;charset=utf-8' }), `keturunan-${slug || 'silsilah'}.csv`)
 }
 
 /** @param {File} file */
@@ -59,5 +115,5 @@ export async function bukaFile(file) {
     alert('File tidak dikenali sebagai file silsilah.')
     return
   }
-  muatJSON(obj)
+  return muatJSON(obj)
 }

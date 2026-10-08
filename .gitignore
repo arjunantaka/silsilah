@@ -5,53 +5,58 @@ yarn-debug.log*
 yarn-error.log*
 
 # Build outputs
+dist/
 frontend/dist/
 frontend/build/
-dist/
 *.tsbuildinfo
 
-# Environment files
-.env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+# Wrangler / Cloudflare lokal
+.wrangler/
 
-# IDE files
+# Environment files (rahasia; contoh boleh ikut)
+.env
+.env.*
+!.env.example
+
+# Test & tool outputs
+test-results/
+playwright-report/
+playwright/.cache/
+coverage/
+
+# Log
+*.log
+
+# Editor / IDE
 .vscode/
 .idea/
 .roo/
 *.swp
 *.swo
+*~
 
-# OS files
+# OS
 .DS_Store
 Thumbs.db
 
-# Logs
-*.log
+# State tool (cache saja; .serena/memories tetap dilacak)
+.serena/cache/
+.cache/
+.parcel-cache/
 
-# Test outputs
-test-results/
-playwright-report/
-test-results.xml
-
-# Temporary files
+# Berkas sementara & debug
 *.tmp
 *.temp
-
-# Debug files
+*.pid
 debug-*.png
 debug-*.cjs
 manual-test.html
 
-# Database files (if using local SQLite)
+# Database lokal
 *.db
 *.sqlite
 *.sqlite3
 
-# Cache directories
-.cache/
-.parcel-cache/
-# Wrangler lokal
-.wrangler/
+# Platform deploy lain
+.netlify/
+.vercel/

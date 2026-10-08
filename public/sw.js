@@ -1,5 +1,5 @@
 // Cache-first runtime: aset yang pernah dilihat tersimpan untuk offline.
-// Tanpa daftar precache — aman untuk nama file ber-hash dari Vite.
+// Tanpa daftar precache: aman untuk nama file ber-hash dari Vite.
 const CACHE = 'silsilah-v1'
 
 self.addEventListener('install', () => {

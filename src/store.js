@@ -8,10 +8,14 @@
  * @typedef {Object} Anggota
  * @property {string} id
  * @property {string} nama
+ * @property {string} kode
  * @property {'L'|'P'|''} gender
  * @property {string} lahir
  * @property {string} wafat
  * @property {string} catatan
+ * @property {string} tempat_lahir
+ * @property {string} alamat
+ * @property {string} pekerjaan
  * @property {string|null} ayah
  * @property {string|null} ibu
  * @property {string[]} pasangan
@@ -26,15 +30,19 @@
 /**
  * @typedef {Object} Fields
  * @property {string} nama
+ * @property {string} kode
  * @property {'L'|'P'|''} gender
  * @property {string} lahir
  * @property {string} wafat
  * @property {string} catatan
+ * @property {string} tempat_lahir
+ * @property {string} alamat
+ * @property {string} pekerjaan
  */
 
 /**
  * @typedef {Object} FormUI
- * @property {'akar'|'anak'|'pasangan'|'edit'} mode
+ * @property {'akar'|'anak'|'pasangan'|'edit'|'ortu'|'pasang'} mode
  * @property {string} [targetId]
  * @property {{ ayah: string|null, ibu: string|null }} [ortu]
  * @property {string[]} [kandidat]
@@ -57,7 +65,10 @@ function muatAwal() {
     const raw = localStorage.getItem(KEY)
     if (raw) {
       const obj = JSON.parse(raw)
-      if (obj && typeof obj.nama_keluarga === 'string' && Array.isArray(obj.anggota)) return obj
+      if (obj && typeof obj.nama_keluarga === 'string' && Array.isArray(obj.anggota)) {
+        obj.anggota = obj.anggota.map((/** @type {any} */ a) => ({ kode: '', tempat_lahir: '', alamat: '', pekerjaan: '', ...a }))
+        return obj
+      }
     }
   } catch {}
   return { ...DEFAULT, anggota: [] }
@@ -66,8 +77,8 @@ function muatAwal() {
 /** @type {Writable<DataKeluarga>} */
 export const data = writable(muatAwal())
 
-/** @type {Writable<{ sheetId: string|null, form: FormUI|null, menuBuka: boolean }>} */
-export const ui = writable({ sheetId: null, form: null, menuBuka: false })
+/** @type {Writable<{ sheetId: string|null, form: FormUI|null, menuBuka: boolean, fokusId: string|null }>} */
+export const ui = writable({ sheetId: null, form: null, menuBuka: false, fokusId: null })
 
 let dimuat = false
 data.subscribe((d) => {
@@ -123,6 +134,34 @@ export function pisahkanPasangan(aId, bId) {
   })
 }
 
+// Sambungkan orang (yang sudah ada, mungkin lepas) ke orang tua; null = tidak diketahui.
+// Kode anggota tidak berubah: kode diketik manual oleh user.
+/** @param {string} id @param {string|null} ayahId @param {string|null} ibuId */
+export function setOrtu(id, ayahId, ibuId) {
+  data.update((d) => {
+    const org = d.anggota.find((a) => a.id === id)
+    if (org) {
+      org.ayah = ayahId
+      org.ibu = ibuId
+    }
+    return d
+  })
+}
+
+// Pasangkan dua orang yang sudah ada: penulisan ganda atomik di kedua pihak,
+// pola sama seperti tambahPasangan/pisahkanPasangan.
+/** @param {string} aId @param {string} bId */
+export function tautkanPasangan(aId, bId) {
+  data.update((d) => {
+    const a = d.anggota.find((x) => x.id === aId)
+    const b = d.anggota.find((x) => x.id === bId)
+    if (!a || !b || a.id === b.id) return d
+    if (!(a.pasangan || []).includes(bId)) a.pasangan = [...(a.pasangan || []), bId]
+    if (!(b.pasangan || []).includes(aId)) b.pasangan = [...(b.pasangan || []), aId]
+    return d
+  })
+}
+
 // Hanya field personal; relasi tidak tersentuh.
 /** @param {string} id @param {Partial<Fields>} patch */
 export function perbarui(id, patch) {
@@ -154,7 +193,10 @@ export function muatJSON(obj) {
     alert('File tidak dikenali sebagai file silsilah.')
     return false
   }
-  data.set(obj)
+  data.set({
+    nama_keluarga: obj.nama_keluarga,
+    anggota: obj.anggota.map((/** @type {any} */ a) => ({ kode: '', tempat_lahir: '', alamat: '', pekerjaan: '', ...a })),
+  })
   return true
 }
 

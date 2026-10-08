@@ -11,7 +11,7 @@
     "check": "svelte-check --tsconfig ./tsconfig.json",
     "test:e2e": "playwright test",
     "cf:dev": "npm run build && npx -y wrangler@3.114.17 pages dev",
-    "cf:deploy": "npm run build && npx -y wrangler@3.114.17 pages deploy"
+    "cf:deploy": "npm run build && npx -y wrangler@3.114.17 pages deploy dist --project-name silsilah-keluarga --branch main"
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",

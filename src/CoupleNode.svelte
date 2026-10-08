@@ -8,8 +8,6 @@
 
   /** @type {string} */
   export let anchorId
-  /** @type {string|null} */
-  export let pasanganId = null
   /** @type {string[]} */
   export let jalur = []
 
@@ -17,35 +15,66 @@
   $: byId = new Map(anggota.map((a) => [a.id, a]))
   $: anchor = byId.get(anchorId)
 
-  // Pengaman siklus (file impor bisa rusak): anchor sudah di jalur → kotak saja.
+  // Pengaman siklus (file impor bisa rusak): anchor sudah di jalur -> kotak saja.
   $: siklus = jalur.includes(anchorId)
 
-  // Pasangan anchor yang masih ada di data.
-  $: pasanganEksis = anchor ? (anchor.pasangan || []).filter((id) => byId.has(id)) : []
+  /** @param {Anggota|undefined} a @returns {boolean} */
+  function punyaOrtu(a) {
+    return !!a && (a.ayah !== null || a.ibu !== null)
+  }
 
-  // Baris pernikahan: satu (anchor, pasangan) bila dipanggil dengan pasanganId,
-  // kalau tidak satu baris per pasangan eksis, atau baris tunggal tanpa pasangan.
-  $: baris = siklus
-    ? []
-    : pasanganId
-      ? [{ a: anchorId, s: pasanganId }]
-      : pasanganEksis.length
-        ? pasanganEksis.map((s) => ({ a: anchorId, s }))
-        : [{ a: anchorId, s: null }]
+  // Pemilik baris seorang anak: orang tua yang punya orang tua sendiri, yaitu
+  // yang benar-benar digambar di pohon ini. Bila keduanya punya, ayah menang;
+  // bila tak ada yang punya, ayah tetap menang supaya hasilnya tunggal.
+  // Satu anak selalu punya tepat satu pemilik - inilah kunci anti-kotak-dobel.
+  /** @param {Anggota} c @returns {string|null} */
+  function pemilik(c) {
+    const ayah = c.ayah ? byId.get(c.ayah) : null
+    const ibu = c.ibu ? byId.get(c.ibu) : null
+    if (ayah && punyaOrtu(ayah)) return ayah.id
+    if (ibu && punyaOrtu(ibu)) return ibu.id
+    return ayah ? ayah.id : ibu ? ibu.id : null
+  }
 
-  // Anak dari baris (a, s): {c.ayah, c.ibu} yang non-null ⊆ {a, s}, minimal satu terisi.
-  // Urutan = urutan array anggota. Dihitung per baris agar reaktif terhadap $data.
-  /** @param {string} a @param {string|null} s @param {Anggota[]} semua @returns {Anggota[]} */
-  function anakDari(a, s, semua) {
-    const set = new Set([a, s].filter(Boolean))
-    return semua.filter((c) => {
-      const p = [c.ayah, c.ibu].filter(Boolean)
-      return p.length > 0 && p.every((x) => set.has(x))
+  // Pasangan yang digambar di baris ini: hanya yang tidak punya orang tua sendiri
+  // (menantu). Pasangan yang punya orang tua sudah digambar di bawah orang tuanya,
+  // jadi menggambarnya lagi di sini akan membuat kotak dobel.
+  /** @param {Anggota|undefined} a @param {boolean} luar @returns {Anggota[]} */
+  function pasanganDari(a, luar) {
+    if (!a) return []
+    /** @type {Anggota[]} */
+    const hasil = []
+    for (const id of a.pasangan || []) {
+      const p = byId.get(id)
+      if (p && punyaOrtu(p) === luar) hasil.push(p)
+    }
+    return hasil
+  }
+  $: pasanganMasuk = pasanganDari(anchor, false)
+  $: pasanganLuar = pasanganDari(anchor, true)
+
+  // Satu baris per pasangan yang masuk; bila tidak ada pasangan, satu baris tunggal.
+  // Kotak anchor hanya digambar di baris pertama supaya orang dengan lebih dari satu
+  // pasangan tidak muncul berkali-kali.
+  $: baris = siklus ? [] : pasanganMasuk.length ? pasanganMasuk.map((p) => ({ a: anchorId, s: p.id })) : [{ a: anchorId, s: null }]
+
+  // Anak dari satu baris: pemiliknya anchor atau pasangan yang masuk, dan
+  // pasangannya (orang tua satunya) menentukan baris mana - baris pasangan itu
+  // kalau ada, kalau tidak baris pertama. Tetap satu baris per anak.
+  /** @param {{a: string, s: string|null}} b @param {{a: string, s: string|null}[]} rows @returns {Anggota[]} */
+  function anakUntukBaris(b, rows) {
+    return anggota.filter((c) => {
+      const owner = pemilik(c)
+      if (!owner) return false
+      if (owner !== b.a && owner !== b.s) return false
+      const lain = [c.ayah, c.ibu].filter((x) => x && x !== owner)
+      const target = rows.find((r) => r.s && lain.includes(r.s)) || rows[0]
+      return target === b
     })
   }
 
-  $: anakPerBaris = new Map(baris.map((b) => [b, anakDari(b.a, b.s, anggota)]))
-  $: jalurBaru = [...jalur, anchorId, pasanganId ?? ''].filter((x) => x !== '')
+  $: anakPerBaris = new Map(baris.map((b) => [b, anakUntukBaris(b, baris)]))
+  $: jalurBaru = [...jalur, anchorId]
 
   /** @param {string} id */
   function buka(id) {
@@ -55,7 +84,7 @@
   /** @param {Anggota|undefined} ortu @returns {string} */
   function tanggal(ortu) {
     if (!ortu) return ''
-    if (ortu.lahir && ortu.wafat) return `(${ortu.lahir} – ${ortu.wafat})`
+    if (ortu.lahir && ortu.wafat) return `(${ortu.lahir} - ${ortu.wafat})`
     if (ortu.lahir) return `(l. ${ortu.lahir})`
     if (ortu.wafat) return `(† ${ortu.wafat})`
     return ''
@@ -66,51 +95,67 @@
   {#if siklus}
     <div class="node">
       <div class="unit">
-        <button class="kotak" on:click={() => buka(anchorId)}>
+        <button
+          class="kotak"
+          class:fokus={$ui.fokusId === anchorId}
+          data-id={anchorId}
+          on:click={() => buka(anchorId)}
+        >
           <span class="nama">{anchor.nama}</span>
+          {#if anchor.kode}<span class="kode">{anchor.kode}</span>{/if}
           {#if tanggal(anchor)}<span class="tanggal">{tanggal(anchor)}</span>{/if}
         </button>
       </div>
     </div>
   {:else}
     <div class="kolom">
-      {#each baris as b (b.s ?? 'sendiri')}
+      {#each baris as b, i (b.s ?? 'sendiri')}
         {@const anak = anakPerBaris.get(b) || []}
         <div class="node" class:punya-anak={anak.length > 0}>
           <div class="unit">
-            <button class="kotak" on:click={() => buka(b.a)}>
-              <span class="nama">{anchor.nama}</span>
-              {#if tanggal(anchor)}<span class="tanggal">{tanggal(anchor)}</span>{/if}
-            </button>
+            {#if i === 0}
+              <button
+                class="kotak"
+                class:fokus={$ui.fokusId === b.a}
+                data-id={b.a}
+                on:click={() => buka(b.a)}
+              >
+                <span class="nama">{anchor.nama}</span>
+                {#if anchor.kode}<span class="kode">{anchor.kode}</span>{/if}
+                {#if tanggal(anchor)}<span class="tanggal">{tanggal(anchor)}</span>{/if}
+              </button>
+            {/if}
             {#if b.s}
-              <span class="kawin" aria-hidden="true">⚭</span>
-              <button class="kotak" on:click={() => buka(b.s)}>
+              {#if i === 0}<span class="kawin" aria-hidden="true">⚭</span>{/if}
+              <button
+                class="kotak"
+                class:fokus={$ui.fokusId === b.s}
+                data-id={b.s}
+                on:click={() => buka(b.s)}
+              >
                 <span class="nama">{byId.get(b.s)?.nama}</span>
+                {#if byId.get(b.s)?.kode}<span class="kode">{byId.get(b.s)?.kode}</span>{/if}
                 {#if tanggal(byId.get(b.s))}<span class="tanggal">{tanggal(byId.get(b.s))}</span>{/if}
               </button>
+            {/if}
+            {#if i === 0}
+              {#each pasanganLuar as p (p.id)}
+                <span class="kawin" aria-hidden="true">⚭</span>
+                <button
+                  class="rujukan"
+                  on:click={() => buka(p.id)}
+                  title={`${p.nama} digambar di bawah orang tuanya sendiri`}
+                >
+                  {p.nama}{#if p.kode}{' '}{p.kode}{/if}
+                </button>
+              {/each}
             {/if}
           </div>
           {#if anak.length > 0}
             <ul class="anak">
               {#each anak as c (c.id)}
                 <li>
-                  {#if (c.pasangan || []).some((id) => byId.has(id))}
-                    <div class="kolom">
-                      {#each (c.pasangan || []).filter((id) => byId.has(id)) as pid (pid)}
-                        <CoupleNode
-                          anchorId={c.id}
-                          pasanganId={pid}
-                          jalur={jalurBaru}
-                        />
-                      {/each}
-                    </div>
-                  {:else}
-                    <CoupleNode
-                      anchorId={c.id}
-                      pasanganId={null}
-                      jalur={jalurBaru}
-                    />
-                  {/if}
+                  <CoupleNode anchorId={c.id} jalur={jalurBaru} />
                 </li>
               {/each}
             </ul>
