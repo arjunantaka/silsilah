@@ -19,6 +19,7 @@ Aplikasi pencatatan silsilah keluarga bergaya "kasir": sederhana, besar tombolny
 - **Simpan otomatis** ke localStorage; tambahan: **Simpan/Buka File JSON**, **Unduh CSV** (semua anggota, kolom kode + tempat lahir/alamat/pekerjaan), **Cetak/PDF** (landscape, hanya pohon).
 - **Cloud sebagai database** dengan kunci keluarga: **tersimpan otomatis** - setiap perubahan dikirim ke cloud 3 detik setelah berhenti mengetik. Saat keluarga dibuat, kode dibuat otomatis (mis. `keluarga-sutrisno-7k2m9x`) dan muncul di baris status bersama tombol **🔗 Salin Tautan**.
 - **Daftar keluarga** di layar kosong: semua keluarga yang sudah tersimpan di database ditampilkan (nama, jumlah orang, kode) dan bisa dibuka dengan satu tekan; membuka lewat `?kode=...` juga selalu menarik dokumen itu dari database.
+- **Buat silsilah baru**: menu → **➕ Silsilah Baru** — dokumen kerja dikosongkan dan kode dilepas, jadi keluarga berikutnya mendapat kode baru; keluarga lama tetap di database dan bisa dibuka lagi dari daftar. (Di perangkat/HP yang belum pernah dipakai, cukup buka situs lalu tekan **➕ Mulai: Orang Pertama**.)
 - **PWA**: bisa di-install ke home screen, service worker cache-first untuk offline.
 
 ## 🚀 Menjalankan

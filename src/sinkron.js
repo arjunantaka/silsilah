@@ -25,7 +25,7 @@ function setKode(kode) {
 }
 
 // Lepas kode: data berikutnya mendapat kode keluarga baru
-// (dipakai saat membuka file JSON dan Hapus Semua - jangan menimpa keluarga lama).
+// (dipakai saat membuka file JSON dan Silsilah Baru - jangan menimpa keluarga lama).
 export function lepasKode() {
   kodeKeluarga.set('')
   try {

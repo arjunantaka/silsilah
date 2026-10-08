@@ -26,7 +26,7 @@ daripada D1/SQL yang akan memaksa tabel relasional.
   baris status.
 - **Daftar keluarga**: layar kosong menampilkan semua keluarga di database
   (nama, jumlah orang, kode) dari `GET /api/families`, satu tekan untuk membuka.
-  Membuka file JSON atau **Hapus Semua** melepaskan kode, sehingga keluarga
+  Membuka file JSON atau **➕ Silsilah Baru** melepaskan kode, sehingga keluarga
   berikutnya mendapat kode baru dan tidak menimpa dokumen lama.
 - Keamanan: kode berlaku seperti password: siapa pun yang tahu kode bisa
   membaca/menimpa data. **Daftar keluarga bersifat publik** — semua kode keluarga

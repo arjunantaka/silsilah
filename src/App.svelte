@@ -69,12 +69,22 @@
     tutupMenu()
     window.print()
   }
-  function kosongkanSemua() {
-    if (confirm('Hapus SEMUA data keluarga?')) {
-      hapusSemua()
-      lepasKode()
-      tutupMenu()
-    }
+  // Mulai silsilah baru: dokumen kerja dikosongkan dan kode dilepas, jadi keluarga
+  // berikutnya mendapat kode baru. Keluarga lama tetap di database dan bisa dibuka
+  // lagi dari daftar di layar kosong.
+  function silsilahBaru() {
+    if (
+      !confirm(
+        'Mulai silsilah baru?\n\nKeluarga yang sekarang tetap tersimpan di database dan bisa dibuka lagi dari daftar.',
+      )
+    )
+      return
+    hapusSemua()
+    lepasKode()
+    statusCloud = ''
+    muatDaftar()
+    tutupMenu()
+    mulaiAkar()
   }
 
   // ---------- Cloud (kode keluarga sebagai kunci) ----------
@@ -145,16 +155,21 @@
       statusCloud = 'Gagal memuat dari database cloud: ' + /** @type {Error} */ (e).message
     }
   }
-  // Daftar keluarga di database (hanya diisi saat layar kosong).
+  // Daftar keluarga di database (tampil di layar kosong).
   /** @type {{ kode: string, nama: string|null, jumlah: number|null }[]} */
   let daftarKeluarga = []
+  let memuatDaftar = false
+  function muatDaftar() {
+    if (memuatDaftar) return
+    memuatDaftar = true
+    ambilDaftarKeluarga()
+      .then((l) => (daftarKeluarga = l))
+      .catch(() => {})
+      .finally(() => (memuatDaftar = false))
+  }
   onMount(() => {
     muatDariDatabase()
-    if (get(data).anggota.length === 0) {
-      ambilDaftarKeluarga()
-        .then((l) => (daftarKeluarga = l))
-        .catch(() => {})
-    }
+    if (get(data).anggota.length === 0) muatDaftar()
   })
   onDestroy(mulaiSinkron()) // autosave aktif selama komponen hidup
 
@@ -193,7 +208,7 @@
         {#if sedangCloud}<p class="info-pembaca">Sedang memproses cloud…</p>{/if}
         <button on:click={() => { unduhCSV(); tutupMenu() }}>📊 Unduh CSV</button>
         <button on:click={cetak}>🖨️ Cetak / PDF</button>
-        <button class="bahaya" on:click={kosongkanSemua}>🗑️ Hapus Semua</button>
+        <button class="bahaya" on:click={silsilahBaru}>➕ Silsilah Baru</button>
       </div>
     {/if}
   </div>

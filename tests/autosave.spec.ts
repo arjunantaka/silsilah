@@ -92,3 +92,70 @@ test('layar kosong menampilkan daftar keluarga dari database', async ({ page }) 
   await page.getByRole('button', { name: /Keluarga Budi/ }).click()
   await expect(page.locator('.kotak')).toHaveCount(3)
 })
+
+test('silsilah baru: bersihkan lalu tetap bisa membuka keluarga lama dari daftar', async ({ page }) => {
+  page.on('dialog', (d) => d.accept()) // konfirmasi "Silsilah Baru" & alert
+  await page.route('**/api/**', async (route) => {
+    const url = new URL(route.request().url())
+    if (url.pathname === '/api/families') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          ok: true,
+          data: [
+            { kode: 'keluarga-lama-1', nama: 'Keluarga Lama', jumlah: 1 },
+            { kode: 'keluarga-baru-2', nama: 'Keluarga Baru', jumlah: 2 },
+          ],
+        }),
+      })
+      return
+    }
+    if (url.pathname === '/api/data' && url.searchParams.get('kode') === 'keluarga-lama-1') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          ok: true,
+          data: {
+            nama_keluarga: 'Keluarga Lama',
+            anggota: [
+              {
+                id: 'x',
+                nama: 'Mbah Slamet',
+                kode: '',
+                gender: 'L',
+                lahir: '',
+                wafat: '',
+                catatan: '',
+                tempat_lahir: '',
+                alamat: '',
+                pekerjaan: '',
+                ayah: null,
+                ibu: null,
+                pasangan: [],
+              },
+            ],
+          },
+        }),
+      })
+      return
+    }
+    await route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ ok: false }) })
+  })
+
+  await page.goto('/?kode=keluarga-lama-1')
+  await expect(page.locator('.kotak')).toHaveCount(1)
+  await expect(page.locator('.kode-sinkron')).toHaveText('keluarga-lama-1')
+
+  // Buat silsilah baru: dokumen kerja dikosongkan, kode dilepas.
+  await page.getByRole('button', { name: '☰ Menu' }).click()
+  await page.getByRole('button', { name: /Silsilah Baru/ }).click()
+
+  await expect(page.locator('.panel-bawah')).toBeVisible() // langsung ke form orang pertama
+  expect(await page.evaluate(() => localStorage.getItem('silsilah:kode'))).toBe(null)
+  await page.keyboard.press('Escape')
+  await expect(page.locator('.layar-kosong')).toBeVisible()
+  await expect(page.locator('.daftar-keluarga')).toContainText('Keluarga Lama')
+  await expect(page.locator('.daftar-keluarga')).toContainText('Keluarga Baru')
+})
