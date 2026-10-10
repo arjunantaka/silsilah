@@ -1,6 +1,6 @@
 // Export/buka file JSON & CSV, dan util nama file.
 import { get } from 'svelte/store'
-import { data, muatJSON } from './store.js'
+import { data, muatJSON, generasiKeturunan } from './store.js'
 
 /**
  * @import { Anggota } from './store.js'
@@ -38,12 +38,21 @@ export function unduhCSV() {
   const d = get(data)
   const byId = new Map(d.anggota.map((a) => [a.id, a.nama]))
   const baris = [
-    ['nama', 'kode', 'gender', 'tempat_lahir', 'lahir', 'wafat', 'alamat', 'pekerjaan', 'ayah', 'ibu', 'pasangan', 'catatan'],
+    ['kode', 'nama', 'gender', 'tempat_lahir', 'lahir', 'wafat', 'alamat', 'pekerjaan', 'ayah', 'ibu', 'pasangan', 'catatan'],
   ]
-  for (const a of d.anggota) {
+  // Urut kode natural (A1P2 < A1P10); tanpa kode di akhir, diurutkan nama.
+  const urut = [...d.anggota].sort((a, b) => {
+    const ka = a.kode || ''
+    const kb = b.kode || ''
+    if (ka && !kb) return -1
+    if (!ka && kb) return 1
+    if (ka !== kb) return ka.localeCompare(kb, 'id', { numeric: true })
+    return a.nama.localeCompare(b.nama, 'id')
+  })
+  for (const a of urut) {
     baris.push([
-      a.nama,
       a.kode || '',
+      a.nama,
       a.gender,
       a.tempat_lahir,
       a.lahir,
@@ -61,7 +70,7 @@ export function unduhCSV() {
 }
 
 // Tabel keturunan: orang akarnya di baris pertama, lalu keturunan BFS per generasi
-// (anak → putu → buyut → ...) hingga terbawah. seen menahan siklus dari file impor rusak.
+// (anak → cucu → buyut → canggah) hingga terbawah.
 /** @param {string} akarId */
 export function unduhKeturunanCSV(akarId) {
   const d = get(data)
@@ -69,23 +78,7 @@ export function unduhKeturunanCSV(akarId) {
   const akar = byId.get(akarId)
   if (!akar) return
 
-  const urut = [akar]
-  const seen = new Set([akarId])
-  let batas = [akarId]
-  while (batas.length > 0) {
-    const gen = d.anggota
-      .filter(
-        (c) =>
-          !seen.has(c.id) &&
-          ((c.ayah !== null && batas.includes(c.ayah)) || (c.ibu !== null && batas.includes(c.ibu))),
-      )
-      .map((c) => c.id)
-    for (const id of gen) {
-      seen.add(id)
-      urut.push(/** @type {Anggota} */ (byId.get(id)))
-    }
-    batas = gen
-  }
+  const urut = [akar, ...generasiKeturunan(d.anggota, akarId).flat()]
 
   const baris = [['kode', 'nama', 'tempat tanggal lahir', 'alamat', 'pekerjaan', 'suami/istri', 'orang tua']]
   for (const a of urut) {
@@ -95,10 +88,20 @@ export function unduhKeturunanCSV(akarId) {
       [a.tempat_lahir, a.lahir].filter(Boolean).join(', '),
       a.alamat,
       a.pekerjaan,
-      (a.pasangan || []).map((p) => byId.get(p)?.nama || '').filter(Boolean).join('; '),
-      [a.ayah ? byId.get(a.ayah)?.nama || '' : '', a.ibu ? byId.get(a.ibu)?.nama || '' : '']
+      // Mantan pasangan (pisah) dikecualikan dari keterangan suami/istri.
+      (a.pasangan || [])
+        .filter((p) => !(a.pisah || []).includes(p))
+        .map((p) => byId.get(p)?.nama || '')
         .filter(Boolean)
-        .join(' & '),
+        .join('; '),
+      // Sisi orang tua yang kosong ditandai "ayah X" / "ibu X"; akar (keduanya
+      // kosong) tetap dikosongkan.
+      a.ayah || a.ibu
+        ? [
+            a.ayah ? byId.get(a.ayah)?.nama || '' : 'ayah X',
+            a.ibu ? byId.get(a.ibu)?.nama || '' : 'ibu X',
+          ].join(' & ')
+        : '',
     ])
   }
   const csv = '\uFEFF' + baris.map((r) => r.map(kolomCSV).join(',')).join('\r\n')

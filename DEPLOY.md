@@ -51,8 +51,31 @@ npm run cf:deploy                                            # build + pages dep
 `--branch main` penting: tanpanya deploy masuk sebagai *preview*, bukan produksi.
 
 - Produksi: <https://silsilah-keluarga-43j.pages.dev>
+- Preview: <https://preview.silsilah-keluarga-43j.pages.dev> (alias stabil; tiap deploy juga
+  dapat URL unik seperti `https://9c8bf850.silsilah-keluarga-43j.pages.dev`)
 - Akun: akun Cloudflare pemilik project (email + account id ada di Dashboard → Workers & Pages)
-- KV namespace: `silsilah-keluarga-SILSILAH_KV`, id `ccea02ef1e054091b1f7d3efe0688f6b`
+- KV produksi: `silsilah-keluarga-SILSILAH_KV`, id `ccea02ef1e054091b1f7d3efe0688f6b`
+- KV preview: `silsilah-keluarga-SILSILAH_KV_PREVIEW`, id `00f0ef62e8c2429dbf4128dd57031462`
+  (dipasang lewat `[env.preview]` di `wrangler.toml`)
+
+### Alur preview dulu, produksi belakangan
+
+```bash
+npm run cf:preview    # build + deploy ke branch preview (tidak menyentuh produksi)
+npm run cf:deploy     # hanya setelah preview diuji: deploy ke branch main (produksi)
+```
+
+Cek isi tiap lingkungan:
+
+```bash
+npx -y wrangler@3.114.17 pages deployment list --project-name silsilah-keluarga
+curl -s https://preview.silsilah-keluarga-43j.pages.dev/api/families      # database preview
+curl -s https://silsilah-keluarga-43j.pages.dev/api/families             # database produksi
+```
+
+Database preview terpisah: mengisi atau menghapus data lewat URL preview tidak
+menyentuh data produksi. Database preview terisi otomatis saat aplikasi dibuka
+dan ada data (autosave 3 detik), jadi aman untuk uji coba.
 
 ### Mengisi database produksi
 

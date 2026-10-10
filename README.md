@@ -12,11 +12,12 @@ Aplikasi pencatatan silsilah keluarga bergaya "kasir": sederhana, besar tombolny
   - Kode boleh sama antar orang; form hanya memberi peringatan kuning, tidak melarang.
 - **Data anggota lengkap**: nama, kode, gender, tempat lahir, tanggal lahir, alamat, pekerjaan/sekolah, wafat, catatan.
 - **Sambung belakangan** dari kader orang: `🔗 Jadikan Anak…` (pilih ayah/ibu) dan `💑 Pasangkan dengan…` (pilih orang yang sudah ada).
-- **Kader menampilkan hitungan** `Anak (n)` dan `Cucu (n)`; tiap nama adalah chip yang bisa ditekan untuk pindah ke orangnya.
-- **📊 Tabel Keturunan** (di kader): unduh CSV berisi orang itu di baris pertama, lalu anak, putu, buyut, … hingga terbawah; kolom Kode, Nama, Tempat Tanggal Lahir, Alamat, Pekerjaan, Suami/Istri, Orang Tua.
+- **Kader ringkas**: hitungan `Anak (n)`, `Cucu (n)`, `Buyut (n)`, `Canggah (n)` (dan `Generasi N` untuk lebih dalam). Nama digambar sebagai rantai teks yang padat, bukan pil besar; tiap nama bisa ditekan untuk pindah ke orangnya.
+- **Tanda pisah (cerai)**: di kader, tombol 💔 pada pasangan menandainya `(pisah)`. Relasi tetap tersimpan, di pohon garisnya jadi `✕` dan kotaknya diredupkan, dan mantan pasangan dikecualikan dari kolom Suami/Istri di Tabel Keturunan.
+- **📊 Tabel Keturunan** (di kader): unduh CSV berisi orang itu di baris pertama, lalu anak, cucu, buyut, … hingga terbawah; kolom Kode, Nama, Tempat Tanggal Lahir, Alamat, Pekerjaan, Suami/Istri, Orang Tua.
 - **Pencarian** nama atau kode (mis. `a1p1`): hasil di-tap → kader terbuka, kotak orang disorot dan digulir ke tengah.
 - **Tanpa validasi mengikat**: pasangan boleh banyak, urutan anak = urutan pencatatan, tanggal bebas teks.
-- **Simpan otomatis** ke localStorage; tambahan: **Simpan/Buka File JSON**, **Unduh CSV** (semua anggota, kolom kode + tempat lahir/alamat/pekerjaan), **Cetak/PDF** (landscape, hanya pohon).
+- **Simpan otomatis** ke localStorage; tambahan: **Simpan/Buka File JSON**, **Unduh CSV** (semua anggota, kolom `kode` di depan lalu `nama`, baris diurutkan menaik menurut kode; yang belum berkode di akhir), **Cetak/PDF** (landscape, hanya pohon).
 - **Cloud sebagai database** dengan kunci keluarga: **tersimpan otomatis** - setiap perubahan dikirim ke cloud 3 detik setelah berhenti mengetik. Saat keluarga dibuat, kode dibuat otomatis (mis. `keluarga-sutrisno-7k2m9x`) dan muncul di baris status bersama tombol **🔗 Salin Tautan**.
 - **Daftar keluarga** di layar kosong: semua keluarga yang sudah tersimpan di database ditampilkan (nama, jumlah orang, kode) dan bisa dibuka dengan satu tekan; membuka lewat `?kode=...` juga selalu menarik dokumen itu dari database.
 - **Buat silsilah baru**: menu → **➕ Silsilah Baru** — dokumen kerja dikosongkan dan kode dilepas, jadi keluarga berikutnya mendapat kode baru; keluarga lama tetap di database dan bisa dibuka lagi dari daftar. (Di perangkat/HP yang belum pernah dipakai, cukup buka situs lalu tekan **➕ Mulai: Orang Pertama**.)
@@ -37,7 +38,7 @@ npm run preview  # pratinjau hasil build
 2. **Tambah keluarga**: tap kotak orang → `➕ Tambah Anak` / `💑 Tambah Pasangan`; isi Kode, Tempat Lahir, Alamat, Pekerjaan/Sekolah bila perlu.
 3. **Orang lepas**: `☰ Menu` → `👤 Tambah Orang (Lepas)` untuk mencatat siapa pun dulu; sambungkan nanti lewat `🔗 Jadikan Anak…` atau `💑 Pasangkan dengan…`.
 4. **Cari**: kolom `🔍 Cari nama atau kode…` di bawah toolbar.
-5. **Lihat keturunan**: tap kotak orang → kader menampilkan `Anak (n)` dan `Cucu (n)`; tekan `📊 Tabel Keturunan` untuk mengunduh keturunannya sebagai CSV.
+5. **Lihat keturunan**: tap kotak orang → kader menampilkan `Anak (n)`, `Cucu (n)`, `Buyut (n)`, `Canggah (n)` sebagai rantai nama yang bisa ditekan; tekan `📊 Tabel Keturunan` untuk mengunduh keturunannya sebagai CSV.
 6. **Backup**: `☰ Menu` → `💾 Simpan File` (JSON) atau `📂 Buka File` untuk memuat kembali; `📊 Unduh CSV` untuk Excel.
 
 ## 🛠️ Teknologi
@@ -79,6 +80,7 @@ tests/                  # Playwright e2e
 
 ## 📝 Changelog
 
+- **v1.3.1**: Kader diringkas: daftar keturunan jadi rantai teks padat (pil `.chip-tunggal` dihapus) dan kini menghitung semua generasi (`Anak`, `Cucu`, `Buyut`, `Canggah`, lalu `Generasi N`). **Pasangan ke-2 dan seterusnya** digambar tersambung: barisnya memuat nama suami/istri sebagai acuan (bisa ditekan) dengan simbol ⚭/✕ di tengah, jadi istri kedua tidak lagi tampak menggantung tanpa garis. Tanda **pisah/cerai** sederhana: tombol 💔 pada chip pasangan, garis pohon jadi `✕` dengan kotak diredupkan, mantan pasangan dikecualikan dari kolom Suami/Istri di Tabel Keturunan, dan relasi tidak dihapus. **Anak dengan satu orang tua**: tetap tergambar di pohon (ikut baris orang tua yang tercatat, tidak lagi hilang) dan otomatis dihitung sebagai anak pasangan orang tua itu, sehingga masuk keturunan keluarga; sisi orang tua yang kosong ditandai `ayah X` / `ibu X` di kolom Orang Tua pada Tabel Keturunan. `Unduh CSV` utama: kolom `kode` di depan, baris diurutkan natural menurut kode (tanpa kode di akhir). Traversal keturunan disatukan di `generasiKeturunan()` (`store.js`).
 - **v1.3.0**: Kode keturunan kini diketik manual dan disimpan (`kode`), bukan lagi dihitung dari relasi; `src/kode.js` dihapus. Kolom anggota dilengkapi **Tempat Lahir, Alamat, Pekerjaan/Sekolah** (form, kader, JSON, CSV). Kader menampilkan `Anak (n)` dan `Cucu (n)` dengan chip yang bisa ditekan. Tombol `📊 Tabel Keturunan` mengunduh keturunan seseorang sebagai CSV (orangnya dulu, lalu anak → putu → buyut, dengan kolom Suami/Istri dan Orang Tua). Kode duplikat diperingatkan, tidak dilarang. File lama tetap kompatibel.
 - **v1.2.0**: Kode hierarki tampil di kotak/kader/CSV (`A1`, `A1P1`, `A1B1`, …), pencarian nama & kode dengan sorot otomatis, dan tombol `Tambah Orang (Lepas)` + `Jadikan Anak…` / `Pasangkan dengan…` untuk menyambungkan orang yang sudah ada. JSON tetap tanpa kolom kode (kompatibel dengan file lama).
 

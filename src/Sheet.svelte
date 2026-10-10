@@ -1,5 +1,5 @@
 <script>
-  import { data, ui, hapus, pisahkanPasangan, ortuAnakDari } from './store.js'
+  import { data, ui, hapus, pisahkanPasangan, tandaiPisah, generasiKeturunan, ortuAnakDari } from './store.js'
   import { unduhKeturunanCSV } from './export.js'
 
   function tutup() {
@@ -20,9 +20,11 @@
   $: pasanganEksis = org ? (org.pasangan || []).filter((id) => byId.has(id)) : []
   $: ayah = org?.ayah ? byId.get(org.ayah) : null
   $: ibu = org?.ibu ? byId.get(org.ibu) : null
-  $: anak = org ? $data.anggota.filter((c) => c.ayah === org.id || c.ibu === org.id) : []
-  $: idAnak = new Set(anak.map((a) => a.id))
-  $: cucu = org ? $data.anggota.filter((c) => idAnak.has(c.ayah ?? '') || idAnak.has(c.ibu ?? '')) : []
+  $: setPisah = new Set(org?.pisah || [])
+
+  // Generasi keturunan (BFS yang sama seperti tabel keturunan CSV).
+  const LABEL_GEN = ['Anak', 'Cucu', 'Buyut', 'Canggah']
+  $: keturunan = org ? generasiKeturunan($data.anggota, org.id) : []
 
   function tambahAnakKlik() {
     if (!org) return
@@ -85,8 +87,17 @@
         <div class="grup">
           <span class="label">Pasangan:</span>
           {#each pasanganEksis as pid (pid)}
-            <span class="chip">
-              <button class="chip-nama" on:click={() => buka(pid)}>{byId.get(pid)?.nama}</button>
+            <span class="chip" class:pisah={setPisah.has(pid)}>
+              <button class="chip-nama" on:click={() => buka(pid)}>
+                {byId.get(pid)?.nama}{#if setPisah.has(pid)} (pisah){/if}
+              </button>
+              <button
+                class="chip-pisah"
+                on:click={() => tandaiPisah(org.id, pid)}
+                aria-label={setPisah.has(pid)
+                  ? `Batalkan pisah dengan ${byId.get(pid)?.nama ?? ''}`
+                  : `Tandai pisah dengan ${byId.get(pid)?.nama ?? ''}`}
+              >💔</button>
               <button
                 class="chip-x"
                 on:click={() => pisahkanPasangan(org.id, pid)}
@@ -97,23 +108,16 @@
         </div>
       {/if}
 
-      {#if anak.length > 0}
+      {#each keturunan as gen, i (i)}
         <div class="grup">
-          <span class="label">Anak ({anak.length}):</span>
-          {#each anak as c (c.id)}
-            <button class="chip-tunggal" on:click={() => buka(c.id)}>{c.nama}</button>
-          {/each}
+          <span class="label">{LABEL_GEN[i] ?? `Generasi ${i + 1}`} ({gen.length}):</span>
+          <span class="rantai">
+            {#each gen as c, j (c.id)}
+              <button class="kait" on:click={() => buka(c.id)}>{c.nama}</button>{#if j < gen.length - 1}<span class="rantai-sep">, </span>{/if}
+            {/each}
+          </span>
         </div>
-      {/if}
-
-      {#if cucu.length > 0}
-        <div class="grup">
-          <span class="label">Cucu ({cucu.length}):</span>
-          {#each cucu as c (c.id)}
-            <button class="chip-tunggal" on:click={() => buka(c.id)}>{c.nama}</button>
-          {/each}
-        </div>
-      {/if}
+      {/each}
 
       <div class="aksi">
         <button class="lebar" on:click={tambahAnakKlik}>➕ Tambah Anak</button>

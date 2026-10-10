@@ -126,13 +126,25 @@ test('hitungan anak & cucu + tabel keturunan CSV', async ({ page }) => {
   await page.getByRole('button', { name: 'Simpan' }).click()
   await tutupSheet(page)
 
-  // Hitungan di kader Ani: Ani punya 1 anak dan 1 cucu
+  // Sambung satu generasi lagi: Dani → Eka (buyut dari sudut Ani)
+  await page.locator('.kotak', { hasText: 'Dani' }).click()
+  await page.getByRole('button', { name: /Tambah Anak/ }).click()
+  await page.getByLabel('Nama').fill('Eka')
+  await page.getByRole('button', { name: 'Simpan' }).click()
+  await tutupSheet(page)
+
+  // Hitungan di kader Ani: 1 anak, 1 cucu, 1 buyut, diringkas jadi rantai teks (.kait)
   // (hasText 'Ani' ikut cocok ke 'Dani': case-insensitive; pakai teks persis)
   await page.locator('.kotak').getByText('Ani', { exact: true }).click()
   const panel = page.locator('.panel-bawah')
   await expect(panel).toContainText('Anak (1):')
   await expect(panel).toContainText('Cucu (1):')
-  await expect(panel.locator('.chip-tunggal', { hasText: 'Dani' })).toHaveCount(1)
+  await expect(panel).toContainText('Buyut (1):')
+  await expect(panel.locator('.kait', { hasText: 'Dani' })).toHaveCount(1)
+  await expect(panel.locator('.kait', { hasText: 'Putra' })).toHaveCount(1)
+  // Rantai padat: jarak antar nama bukan chip pil; klik tetap membuka kadernya
+  await panel.locator('.kait', { hasText: 'Eka' }).click()
+  await expect(page.locator('.panel-kepala h2')).toContainText('Eka')
   await tutupSheet(page)
 
   // Ekspor tabel keturunan dari Budi
@@ -151,6 +163,115 @@ test('hitungan anak & cucu + tabel keturunan CSV', async ({ page }) => {
   // Kolom relasi: pasangan & orang tua terisi
   expect(isi).toContain('"Sari"') // kolom suami/istri pada baris Budi
   expect(isi).toContain('"Budi & Sari"') // kolom orang tua pada baris Ani
+})
+
+test('tandai pisah + exclude dari CSV keturunan', async ({ page }) => {
+  await bangunKeluarga(page)
+
+  // Budi menikah lagi dengan Rani
+  await page.locator('.kotak', { hasText: 'Budi' }).click()
+  await page.getByRole('button', { name: /Tambah Pasangan/ }).click()
+  await page.getByLabel('Nama').fill('Rani')
+  await page.getByRole('button', { name: 'Simpan' }).click()
+  await tutupSheet(page)
+
+  // Tandai pisah dengan Sari: chip bertanda, relasi tidak hilang, garis jadi ✕
+  await page.locator('.kotak', { hasText: 'Budi' }).click()
+  await page.getByLabel('Tandai pisah dengan Sari').click()
+  const panel = page.locator('.panel-bawah')
+  await expect(panel.locator('.chip', { hasText: 'Sari' })).toContainText('(pisah)')
+  await expect(panel.locator('.chip-nama', { hasText: 'Rani' })).toBeVisible()
+  await expect(page.locator('.kawin.putus')).toHaveCount(1)
+
+  // Batalkan: tanda hilang, garis kembali ⚭
+  await page.getByLabel('Batalkan pisah dengan Sari').click()
+  await expect(panel.locator('.chip', { hasText: 'Sari' })).not.toContainText('(pisah)')
+  await page.getByLabel('Tandai pisah dengan Sari').click()
+  await tutupSheet(page)
+
+  // CSV keturunan Budi: Sari dikecualikan dari kolom suami/istri, Rani tetap ada
+  const dl = page.waitForEvent('download')
+  await page.locator('.kotak', { hasText: 'Budi' }).click()
+  await page.getByRole('button', { name: /Tabel Keturunan/ }).click()
+  const unduhan = await dl
+  const isi = await readFile(await unduhan.path()!, 'utf8')
+  expect(isi).toContain('"Rani"')
+  expect(isi).not.toContain('"Sari"')
+})
+
+test('CSV utama: kolom kode dulu & baris terurut kode', async ({ page }) => {
+  await bangunKeluarga(page)
+  await buatLepas(page, 'Dewi', 'A2')
+  await tutupSheet(page)
+
+  // Kode: Ani A1B1, Sari A1; Budi tanpa kode → harus di baris terakhir data
+  for (const [nama, kode] of [['Ani', 'A1B1'], ['Sari', 'A1']] as const) {
+    await page.locator('.kotak', { hasText: nama }).click()
+    await page.getByRole('button', { name: /Edit/ }).click()
+    await page.locator('#f-kode').fill(kode)
+    await page.getByRole('button', { name: 'Simpan' }).click()
+    await tutupSheet(page)
+  }
+
+  const dl = page.waitForEvent('download')
+  await page.getByRole('button', { name: '☰ Menu' }).click()
+  await page.getByRole('button', { name: /Unduh CSV/ }).click()
+  const unduhan = await dl
+  const isi = await readFile(await unduhan.path()!, 'utf8')
+  expect(isi).toContain('"kode","nama","gender","tempat_lahir"')
+  const iA1 = isi.indexOf('"A1"')
+  const iA1B1 = isi.indexOf('"A1B1"')
+  const iA2 = isi.indexOf('"A2"')
+  // Baris Budi sendiri: kode kosong di awal ("","Budi",...) - nama Budi juga muncul
+  // sebagai kolom ayah pada baris Ani, jadi jangan pakai indexOf('"Budi"').
+  const iBudi = isi.indexOf('\n"","Budi"')
+  expect(iA1).toBeGreaterThan(0)
+  expect(iA1).toBeLessThan(iA1B1)
+  expect(iA1B1).toBeLessThan(iA2)
+  expect(iA2).toBeLessThan(iBudi)
+})
+
+test('anak dengan satu orang tua tidak hilang dari pohon', async ({ page }) => {
+  await bangunKeluarga(page)
+
+  // Istri kedua Budi (menantu tanpa orang tua sendiri)
+  await page.locator('.kotak', { hasText: 'Budi' }).click()
+  await page.getByRole('button', { name: /Tambah Pasangan/ }).click()
+  await page.getByLabel('Nama').fill('Rani')
+  await page.getByRole('button', { name: 'Simpan' }).click()
+  await tutupSheet(page)
+
+  // Orang lepas, disambungkan hanya ke ibunya (ayah dibiarkan tidak diketahui)
+  await buatLepas(page, 'Yuni')
+  await tutupSheet(page)
+  await page.locator('.kotak', { hasText: 'Yuni' }).click()
+  await page.getByRole('button', { name: /Jadikan Anak/ }).click()
+  await page.locator('#f-ibu').selectOption({ label: 'Rani' })
+  await page.getByRole('button', { name: 'Simpan' }).click()
+  await tutupSheet(page)
+
+  // Tidak dobel, tidak hilang: 5 orang = 5 kotak
+  await expect(page.locator('.kotak')).toHaveCount(5)
+  // Yuni tergambar di baris ibunya (Rani), bukan di baris istri pertama
+  const barisRani = page.locator('.node', { has: page.locator('.kotak', { hasText: 'Rani' }) })
+  await expect(barisRani.locator('ul.anak .kotak', { hasText: 'Yuni' })).toHaveCount(1)
+  // Baris istri kedua tetap terlihat tersambung: acuan nama suami + simbol pernikahan
+  await expect(barisRani.locator('.rujukan', { hasText: 'Budi' })).toHaveCount(1)
+  await expect(barisRani.locator('.kawin')).toHaveCount(1)
+
+  // Yuni ikut masuk keturunan Budi (ibunya istri Budi); sisi ayah ditandai "ayah X"
+  await page.locator('.kotak').getByText('Budi', { exact: true }).click()
+  const panel = page.locator('.panel-bawah')
+  await expect(panel).toContainText('Anak (2):')
+  await expect(panel.locator('.kait', { hasText: 'Yuni' })).toHaveCount(1)
+
+  const dl = page.waitForEvent('download')
+  await page.getByRole('button', { name: /Tabel Keturunan/ }).click()
+  const isi = await readFile(await (await dl).path()!, 'utf8')
+  expect(isi).toContain('"Yuni"')
+  expect(isi).toContain('"ayah X & Rani"')
+  // Ani punya kedua orang tua → tanpa penanda X
+  expect(isi).toContain('"Budi & Sari"')
 })
 
 test('pencarian nama dan kode manual', async ({ page }) => {

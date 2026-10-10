@@ -375,14 +375,30 @@ button.kecil {
   color: var(--bahaya);
   font-weight: 700;
 }
-.chip-tunggal {
+.kait {
   border: none;
-  background: var(--hijau-muda);
-  border: 2px solid var(--hijau);
-  border-radius: 999px;
-  min-height: 44px;
-  padding: 6px 16px;
+  background: transparent;
+  padding: 1px 2px;
+  min-height: 28px;
+  font-size: 15px;
+  color: var(--hijau-tua);
+  font-weight: 600;
 }
+.kait:active { transform: none; }
+.rantai-sep { color: var(--teks-redup); }
+.chip.pisah { border-style: dashed; border-color: var(--bahaya); }
+.chip.pisah .chip-nama { color: var(--bahaya); }
+.chip-pisah {
+  border: none;
+  background: transparent;
+  border-radius: 0;
+  min-width: 44px;
+  min-height: 40px;
+  padding: 6px 8px;
+}
+.kawin.putus { color: var(--bahaya); }
+.kotak.pisah { opacity: 0.72; border-style: dashed; border-color: var(--bahaya); }
+.rujukan.putus { opacity: 0.72; border-style: dashed; border-color: var(--bahaya); color: var(--bahaya); }
 
 .aksi {
   display: grid;

@@ -54,13 +54,15 @@
   $: pasanganLuar = pasanganDari(anchor, true)
 
   // Satu baris per pasangan yang masuk; bila tidak ada pasangan, satu baris tunggal.
-  // Kotak anchor hanya digambar di baris pertama supaya orang dengan lebih dari satu
-  // pasangan tidak muncul berkali-kali.
+  // Kotak anchor digambar penuh di baris pertama; di baris berikutnya anchor muncul
+  // sebagai acuan bernama + simbol ⚭, supaya pasangan ke-2 tetap terlihat tersambung
+  // tanpa menggambar kotaknya dua kali.
   $: baris = siklus ? [] : pasanganMasuk.length ? pasanganMasuk.map((p) => ({ a: anchorId, s: p.id })) : [{ a: anchorId, s: null }]
 
   // Anak dari satu baris: pemiliknya anchor atau pasangan yang masuk, dan
-  // pasangannya (orang tua satunya) menentukan baris mana - baris pasangan itu
-  // kalau ada, kalau tidak baris pertama. Tetap satu baris per anak.
+  // pasangannya (orang tua satunya) menentukan baris mana. Bila orang tua satunya
+  // tidak tercatat, anak ikut baris orang tua yang tercatat (kalau orang tua itu
+  // pasangan), kalau tidak baris pertama. Tetap satu baris per anak.
   /** @param {{a: string, s: string|null}} b @param {{a: string, s: string|null}[]} rows @returns {Anggota[]} */
   function anakUntukBaris(b, rows) {
     return anggota.filter((c) => {
@@ -68,13 +70,17 @@
       if (!owner) return false
       if (owner !== b.a && owner !== b.s) return false
       const lain = [c.ayah, c.ibu].filter((x) => x && x !== owner)
-      const target = rows.find((r) => r.s && lain.includes(r.s)) || rows[0]
+      const target =
+        rows.find((r) => r.s && lain.includes(r.s)) ||
+        rows.find((r) => r.s === owner) ||
+        rows[0]
       return target === b
     })
   }
 
   $: anakPerBaris = new Map(baris.map((b) => [b, anakUntukBaris(b, baris)]))
   $: jalurBaru = [...jalur, anchorId]
+  $: setPisah = new Set(anchor?.pisah || [])
 
   /** @param {string} id */
   function buka(id) {
@@ -126,9 +132,19 @@
               </button>
             {/if}
             {#if b.s}
-              {#if i === 0}<span class="kawin" aria-hidden="true">⚭</span>{/if}
+              {#if i > 0}
+                <button
+                  class="rujukan"
+                  on:click={() => buka(b.a)}
+                  title={`${anchor.nama} digambar di baris pertama`}
+                >
+                  {anchor.nama}{#if anchor.kode}{' '}{anchor.kode}{/if}
+                </button>
+              {/if}
+              <span class="kawin" class:putus={setPisah.has(b.s)} aria-hidden="true">{setPisah.has(b.s) ? '✕' : '⚭'}</span>
               <button
                 class="kotak"
+                class:pisah={setPisah.has(b.s)}
                 class:fokus={$ui.fokusId === b.s}
                 data-id={b.s}
                 on:click={() => buka(b.s)}
@@ -140,13 +156,14 @@
             {/if}
             {#if i === 0}
               {#each pasanganLuar as p (p.id)}
-                <span class="kawin" aria-hidden="true">⚭</span>
+                <span class="kawin" class:putus={setPisah.has(p.id)} aria-hidden="true">{setPisah.has(p.id) ? '✕' : '⚭'}</span>
                 <button
                   class="rujukan"
+                  class:putus={setPisah.has(p.id)}
                   on:click={() => buka(p.id)}
                   title={`${p.nama} digambar di bawah orang tuanya sendiri`}
                 >
-                  {p.nama}{#if p.kode}{' '}{p.kode}{/if}
+                  {p.nama}{#if p.kode}{' '}{p.kode}{/if}{#if setPisah.has(p.id)} (pisah){/if}
                 </button>
               {/each}
             {/if}
