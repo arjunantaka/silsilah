@@ -1,0 +1,15 @@
+# Konfigurasi Cloudflare Pages + KV untuk Silsilah Keluarga.
+name = "silsilah-keluarga"
+compatibility_date = "2025-01-01"
+pages_build_output_dir = "dist"
+
+[[kv_namespaces]]
+binding = "SILSILAH_KV"
+id = "ccea02ef1e054091b1f7d3efe0688f6b"
+
+# Preview (branch selain main) memakai database sendiri supaya uji coba di
+# link preview tidak menyentuh data produksi.
+[env.preview]
+[[env.preview.kv_namespaces]]
+binding = "SILSILAH_KV"
+id = "00f0ef62e8c2429dbf4128dd57031462"

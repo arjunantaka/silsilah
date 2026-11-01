@@ -1,0 +1,133 @@
+<script>
+  import { data, ui, hapus, pisahkanPasangan, tandaiPisah, generasiKeturunan, ortuAnakDari } from './store.js'
+  import { unduhKeturunanCSV } from './export.js'
+
+  function tutup() {
+    ui.update((u) => ({ ...u, sheetId: null }))
+  }
+  // Escape menutup kader; bila form juga terbuka, form yang ditutup duluan.
+  /** @param {KeyboardEvent} e */
+  function tekan(e) {
+    if (e.key === 'Escape' && org && !$ui.form) tutup()
+  }
+  /** @param {string} id */
+  function buka(id) {
+    ui.update((u) => ({ ...u, sheetId: id }))
+  }
+
+  $: byId = new Map($data.anggota.map((a) => [a.id, a]))
+  $: org = $ui.sheetId ? byId.get($ui.sheetId) : null
+  $: pasanganEksis = org ? (org.pasangan || []).filter((id) => byId.has(id)) : []
+  $: ayah = org?.ayah ? byId.get(org.ayah) : null
+  $: ibu = org?.ibu ? byId.get(org.ibu) : null
+  $: setPisah = new Set(org?.pisah || [])
+
+  // Generasi keturunan (BFS yang sama seperti tabel keturunan CSV).
+  const LABEL_GEN = ['Anak', 'Cucu', 'Buyut', 'Canggah']
+  $: keturunan = org ? generasiKeturunan($data.anggota, org.id) : []
+
+  function tambahAnakKlik() {
+    if (!org) return
+    const ortu = ortuAnakDari(org.id, pasanganEksis[0] || null)
+    ui.update((u) => ({
+      ...u,
+      form: { mode: 'anak', targetId: org.id, ortu, kandidat: pasanganEksis },
+    }))
+  }
+  function tambahPasanganKlik() {
+    if (!org) return
+    ui.update((u) => ({ ...u, form: { mode: 'pasangan', targetId: org.id } }))
+  }
+  function hubungOrtuKlik() {
+    if (!org) return
+    ui.update((u) => ({ ...u, form: { mode: 'ortu', targetId: org.id } }))
+  }
+  function hubungPasanganKlik() {
+    if (!org) return
+    ui.update((u) => ({ ...u, form: { mode: 'pasang', targetId: org.id } }))
+  }
+  function editKlik() {
+    if (!org) return
+    ui.update((u) => ({ ...u, form: { mode: 'edit', targetId: org.id } }))
+  }
+  function keturunanKlik() {
+    if (org) unduhKeturunanCSV(org.id)
+  }
+  function hapusKlik() {
+    if (!org) return
+    if (confirm(`Hapus ${org.nama}? Anak dan pasangan tidak ikut terhapus.`)) {
+      hapus(org.id)
+      tutup()
+    }
+  }
+</script>
+
+<svelte:window on:keydown={tekan} />
+
+{#if org}
+  <div class="lapis" role="presentation" on:click={tutup}>
+    <section class="panel-bawah" aria-label={`Data ${org.nama}`} on:click|stopPropagation>
+      <header class="panel-kepala">
+        <h2>{org.nama}{#if org.kode}{' '}<span class="kode">{org.kode}</span>{/if}</h2>
+        <button class="tutup" on:click={tutup} aria-label="Tutup">✕</button>
+      </header>
+
+      {#if org.tempat_lahir || org.lahir}
+        <p class="baris-info">Lahir: {[org.tempat_lahir, org.lahir].filter(Boolean).join(', ')}</p>
+      {/if}
+      {#if org.wafat}<p class="baris-info">Wafat: {org.wafat}</p>{/if}
+      {#if org.alamat}<p class="baris-info">Alamat: {org.alamat}</p>{/if}
+      {#if org.pekerjaan}<p class="baris-info">Pekerjaan: {org.pekerjaan}</p>{/if}
+      {#if org.catatan}<p class="baris-info redup">📝 {org.catatan}</p>{/if}
+      {#if ayah || ibu}
+        <p class="baris-info">Orang tua: {ayah ? ayah.nama : '?'} &amp; {ibu ? ibu.nama : '?'}</p>
+      {/if}
+
+      {#if pasanganEksis.length > 0}
+        <div class="grup">
+          <span class="label">Pasangan:</span>
+          {#each pasanganEksis as pid (pid)}
+            <span class="chip" class:pisah={setPisah.has(pid)}>
+              <button class="chip-nama" on:click={() => buka(pid)}>
+                {byId.get(pid)?.nama}{#if setPisah.has(pid)} (pisah){/if}
+              </button>
+              <button
+                class="chip-pisah"
+                on:click={() => tandaiPisah(org.id, pid)}
+                aria-label={setPisah.has(pid)
+                  ? `Batalkan pisah dengan ${byId.get(pid)?.nama ?? ''}`
+                  : `Tandai pisah dengan ${byId.get(pid)?.nama ?? ''}`}
+              >💔</button>
+              <button
+                class="chip-x"
+                on:click={() => pisahkanPasangan(org.id, pid)}
+                aria-label={`Pisahkan pasangan dengan ${byId.get(pid)?.nama ?? ''}`}
+              >✕</button>
+            </span>
+          {/each}
+        </div>
+      {/if}
+
+      {#each keturunan as gen, i (i)}
+        <div class="grup">
+          <span class="label">{LABEL_GEN[i] ?? `Generasi ${i + 1}`} ({gen.length}):</span>
+          <span class="rantai">
+            {#each gen as c, j (c.id)}
+              <button class="kait" on:click={() => buka(c.id)}>{c.nama}</button>{#if j < gen.length - 1}<span class="rantai-sep">, </span>{/if}
+            {/each}
+          </span>
+        </div>
+      {/each}
+
+      <div class="aksi">
+        <button class="lebar" on:click={tambahAnakKlik}>➕ Tambah Anak</button>
+        <button on:click={tambahPasanganKlik}>💑 Tambah Pasangan</button>
+        <button on:click={hubungOrtuKlik}>🔗 Jadikan Anak…</button>
+        <button on:click={hubungPasanganKlik}>💑 Pasangkan dengan…</button>
+        <button on:click={keturunanKlik}>📊 Tabel Keturunan</button>
+        <button on:click={editKlik}>✏️ Edit</button>
+        <button class="bahaya lebar" on:click={hapusKlik}>🗑️ Hapus</button>
+      </div>
+    </section>
+  </div>
+{/if}
