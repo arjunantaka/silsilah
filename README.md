@@ -11,12 +11,12 @@ Aplikasi pencatatan silsilah keluarga bergaya "kasir": sederhana, besar tombolny
   - `B1`, `B2`, …: buyut (`A1P1B1`), lalu `C…` untuk canggah, dan seterusnya.
   - Kode boleh sama antar orang; form hanya memberi peringatan kuning, tidak melarang.
 - **Data anggota lengkap**: nama, kode, gender, tempat lahir, tanggal lahir, alamat, pekerjaan/sekolah, wafat, catatan.
-- **Sambung belakangan** dari kader orang: `🔗 Jadikan Anak…` (pilih ayah/ibu) dan `💑 Pasangkan dengan…` (pilih orang yang sudah ada).
+- **Sambung belakangan** dari kader orang: `🔗 Jadikan Anak…` (pilih ayah/ibu, dengan pencarian nama/kode) dan `💑 Pasangkan dengan…` (pilih orang yang sudah ada).
 - **Kader ringkas**: hitungan `Anak (n)`, `Cucu (n)`, `Buyut (n)`, `Canggah (n)` (dan `Generasi N` untuk lebih dalam). Nama digambar sebagai rantai teks yang padat, bukan pil besar; tiap nama bisa ditekan untuk pindah ke orangnya.
 - **Tanda pisah (cerai)**: di kader, tombol 💔 pada pasangan menandainya `(pisah)`. Relasi tetap tersimpan, di pohon garisnya jadi `✕` dan kotaknya diredupkan, dan mantan pasangan dikecualikan dari kolom Suami/Istri di Tabel Keturunan.
 - **📊 Tabel Keturunan** (di kader): unduh CSV berisi orang itu di baris pertama, lalu anak, cucu, buyut, … hingga terbawah; kolom Kode, Nama, Tempat Tanggal Lahir, Alamat, Pekerjaan, Suami/Istri, Orang Tua.
 - **Pencarian** nama atau kode (mis. `a1p1`): hasil di-tap → tampil **fokus trah** (orang itu + pasangan + seluruh turunan). Banner menampilkan orang tua dan chip saudara sederajat; tombol besar **↩️ Kembali ke Silsilah** kembali ke pohon lengkap. Di ponsel, tampilan otomatis digeser ke unit orang+pasangan.
-- **Pasangkan dengan…** di kader: dropdown berisi orang lain **urut A–Z** (nama), dengan kolom **Cari orang** untuk menyaring nama/kode. Ini menghindari menggulir puluhan nama saat pohon besar.
+- **Pencarian orang** tersedia di **Pasangkan dengan…** dan **Jadikan Anak…**: kolom **Cari orang** menyaring nama/kode, dropdown urut A–Z, dan pilihan ayah/ibu yang sudah dibuat tetap dipertahankan saat kata pencarian berubah.
 - **Tanpa validasi mengikat**: pasangan boleh banyak; urutan tampilan mengikuti **kode** (natural, case-insensitive), bukan waktu input. Anak kandung ditampilkan sebelum anak bawaan pasangan.
 - **Simpan otomatis** ke localStorage dan Cloudflare KV; **Unduh CSV** (semua anggota, kolom `kode` di depan, baris urut kode; yang belum berkode di akhir), **Tabel Keturunan** per orang, dan **Cetak/PDF** (A3 landscape, skala otomatis agar pohon muat).
 - **Cloud sebagai database** dengan kunci keluarga: **tersimpan otomatis** - setiap perubahan dikirim ke cloud 3 detik setelah berhenti mengetik. Saat keluarga dibuat, kode dibuat otomatis (mis. `keluarga-sutrisno-7k2m9x`) dan muncul di baris status bersama tombol **🔗 Salin Tautan**.

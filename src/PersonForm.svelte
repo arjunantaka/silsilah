@@ -25,6 +25,7 @@
   /** @type {string} */
   let pilihPasang = '' // mode 'pasang'
   let cariPasang = ''
+  let cariOrtu = '' // mode 'ortu'
   /** @type {FormUI|null} */
   let formTerakhir = null
 
@@ -51,6 +52,7 @@
       pilihIbu = form.mode === 'ortu' ? target?.ibu || '' : ''
       pilihPasang = ''
       cariPasang = ''
+      cariOrtu = ''
     }
   }
 
@@ -60,6 +62,14 @@
   // Kandidat sambung: semua orang lain, selain diri sendiri; untuk 'pasang',
   // buang yang sudah jadi pasangan target. Urut alfabetis agar dropdown besar
   // tetap mudah dipindai; pencarian menyaring berdasarkan nama/kode.
+  /** @param {import('./store.js').Anggota} a @param {string} kata @returns {boolean} */
+  function cocokCari(a, kata) {
+    return (
+      a.nama.toLowerCase().includes(kata) ||
+      (a.kode || '').toLowerCase().includes(kata)
+    )
+  }
+
   $: anggotaLain = form?.targetId
     ? $data.anggota
         .filter((a) => a.id !== form.targetId)
@@ -78,13 +88,34 @@
   $: kataPasang = cariPasang.trim().toLowerCase()
   $: kandidatPasangTampil = !kataPasang
     ? kandidatPasang
-    : kandidatPasang.filter(
-        (a) =>
-          a.nama.toLowerCase().includes(kataPasang) ||
-          (a.kode || '').toLowerCase().includes(kataPasang),
-      )
+    : kandidatPasang.filter((a) => cocokCari(a, kataPasang))
   // Jangan biarkan pilihan lama menunjuk orang yang tidak lagi terlihat.
   $: if (pilihPasang && !kandidatPasangTampil.some((a) => a.id === pilihPasang)) pilihPasang = ''
+
+  // Pencarian orang tua menyaring kedua dropdown. Pilihan ayah/ibu yang sudah
+  // ada tetap ditampilkan agar mengetik nama ibu tidak menghapus pilihan ayah.
+  $: kataOrtu = cariOrtu.trim().toLowerCase()
+  $: kandidatOrtu = !kataOrtu
+    ? anggotaLain
+    : anggotaLain.filter((a) => cocokCari(a, kataOrtu))
+  $: opsiAyah = opsiOrtu(pilihAyah, kandidatOrtu, byId)
+  $: opsiIbu = opsiOrtu(pilihIbu, kandidatOrtu, byId)
+
+  /**
+   * @param {string} terpilih
+   * @param {import('./store.js').Anggota[]} kandidat
+   * @param {Map<string, import('./store.js').Anggota>} peta
+   * @returns {import('./store.js').Anggota[]}
+   */
+  function opsiOrtu(terpilih, kandidat, peta) {
+    const orang = terpilih ? peta.get(terpilih) : null
+    if (!orang || kandidat.some((a) => a.id === terpilih)) return kandidat
+    return [...kandidat, orang].sort(
+      (a, b) =>
+        a.nama.localeCompare(b.nama, 'id', { sensitivity: 'base' }) ||
+        (a.kode || '').localeCompare(b.kode || '', 'id', { numeric: true }),
+    )
+  }
 
   // Kode duplikat diizinkan (user yang mengetik), tapi diperingatkan di form.
   $: duplikat = kode.trim()
@@ -147,10 +178,21 @@
       <form on:submit|preventDefault={simpan}>
         {#if form.mode === 'ortu'}
           <div class="medan">
+            <label for="f-cari-ortu">Cari orang</label>
+            <input
+              id="f-cari-ortu"
+              type="search"
+              placeholder="Ketik nama atau kode…"
+              autocomplete="off"
+              bind:value={cariOrtu}
+            />
+          </div>
+
+          <div class="medan">
             <label for="f-ayah">Ayah</label>
             <select id="f-ayah" bind:value={pilihAyah}>
               <option value="">(tidak diketahui)</option>
-              {#each anggotaLain as a (a.id)}
+              {#each opsiAyah as a (a.id)}
                 <option value={a.id}>{a.nama}</option>
               {/each}
             </select>
@@ -160,10 +202,17 @@
             <label for="f-ibu">Ibu</label>
             <select id="f-ibu" bind:value={pilihIbu}>
               <option value="">(tidak diketahui)</option>
-              {#each anggotaLain as a (a.id)}
+              {#each opsiIbu as a (a.id)}
                 <option value={a.id}>{a.nama}</option>
               {/each}
             </select>
+            <p class="info-pembaca">
+              {#if kandidatOrtu.length === 0}
+                Tidak ada nama yang cocok.
+              {:else}
+                {kandidatOrtu.length} orang, urut A–Z.
+              {/if}
+            </p>
           </div>
 
           <p class="info-pembaca">
