@@ -50,6 +50,7 @@
  */
 
 import { writable, get } from 'svelte/store'
+import { bandingKode } from './urut.js'
 
 const KEY = 'silsilah:v1'
 
@@ -97,6 +98,7 @@ export function generasiKeturunan(anggota, akarId) {
     const ortu = anggota.filter((a) => batas.includes(a.id))
     const gen = anggota.filter((c) => !seen.has(c.id) && ortu.some((a) => anakDari(a, c)))
     if (gen.length === 0) break
+    gen.sort(bandingKode)
     for (const c of gen) seen.add(c.id)
     hasil.push(gen)
     batas = gen.map((c) => c.id)
@@ -107,8 +109,8 @@ export function generasiKeturunan(anggota, akarId) {
 /** @type {Writable<DataKeluarga>} */
 export const data = writable(muatAwal())
 
-/** @type {Writable<{ sheetId: string|null, form: FormUI|null, menuBuka: boolean, fokusId: string|null }>} */
-export const ui = writable({ sheetId: null, form: null, menuBuka: false, fokusId: null })
+/** @type {Writable<{ sheetId: string|null, form: FormUI|null, menuBuka: boolean, fokusId: string|null, trahId: string|null, tampilDaftar: boolean }>} */
+export const ui = writable({ sheetId: null, form: null, menuBuka: false, fokusId: null, trahId: null, tampilDaftar: false })
 
 let dimuat = false
 data.subscribe((d) => {

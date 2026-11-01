@@ -55,6 +55,15 @@ export async function buatKodeBaru() {
   return `${dasar}-${akhiran(14)}` // praktis mustahil tabrakan
 }
 
+/** @param {string} kode @returns {Promise<void>} */
+export async function hapusDariCloud(kode) {
+  const res = await fetch(`/api/data?kode=${encodeURIComponent(kode)}&konfirmasi=ya`, {
+    method: 'DELETE',
+  })
+  const hasil = await res.json().catch(() => null)
+  if (!res.ok || !hasil?.ok) throw new Error(hasil?.pesan || 'Gagal menghapus dari cloud.')
+}
+
 /**
  * Daftar keluarga di database.
  * @returns {Promise<{ kode: string, nama: string|null, jumlah: number|null }[]>}

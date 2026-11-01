@@ -1,8 +1,8 @@
 # Deploy ke Cloudflare (gratis): Pages + KV
 
-Database = **Cloudflare KV**: satu dokumen JSON per kode keluarga (format sama dengan
-file "Simpan File"). Data model silsilah memang satu dokumen, jadi KV lebih tepat
-daripada D1/SQL yang akan memaksa tabel relasional.
+Database = **Cloudflare KV**: satu dokumen JSON per kode keluarga (bentuk dokumen
+yang sama dengan yang dikirim aplikasi). Data model silsilah memang satu dokumen,
+jadi KV lebih tepat daripada D1/SQL yang akan memaksa tabel relasional.
 
 ## Cara kerja
 
@@ -10,6 +10,7 @@ daripada D1/SQL yang akan memaksa tabel relasional.
 - **Dashboard memuat dari database**: saat halaman dibuka, aplikasi mengambil
   dokumen keluarga dari KV dan menampilkannya di layar utama.
   - `?kode=<kode>` di alamat → selalu ambil dokumen itu dari database.
+  - `?daftar=1` di alamat → buka Dashboard; refresh tetap di Dashboard.
   - Kode tersimpan di perangkat → ambil otomatis bila perangkat masih kosong.
   - Data lokal tidak pernah ditimpa diam-diam: bila perangkat sudah berisi data,
     penimpaan selalu dikonfirmasi lebih dulu. Bila gagal (offline/kode salah),
@@ -18,15 +19,15 @@ daripada D1/SQL yang akan memaksa tabel relasional.
   baris status menampilkan `☁️ Tersimpan otomatis ke database.` beserta kode
   keluarga aktif dan tombol **🔗 Salin Tautan**. Bila gagal (offline), status
   menjadi `⚠️ Gagal simpan ke cloud.` dengan tombol **Coba lagi**, dan percobaan
-  ulang otomatis terjadi pada perubahan berikutnya. Menu masih menyediakan
-  **☁️ Ambil dari Cloud** (unduh + konfirmasi timpa) untuk menarik dokumen lain.
+  ulang otomatis terjadi pada perubahan berikutnya. Pindah keluarga dilakukan
+  lewat **Daftar Keluarga** (tombol 🏠); data yang belum terkirim didorong dulu.
 - Kode keluarga **dibuat otomatis** saat penyimpanan pertama: slug nama keluarga
   + akhiran acak 6 huruf/angka, mis. `keluarga-sutrisno-7k2m9x` (4-64 huruf/angka/
   tanda minus, selalu huruf kecil). Kode disimpan di perangkat dan ditampilkan di
   baris status.
-- **Daftar keluarga**: layar kosong menampilkan semua keluarga di database
-  (nama, jumlah orang, kode) dari `GET /api/families`, satu tekan untuk membuka.
-  Membuka file JSON atau **➕ Silsilah Baru** melepaskan kode, sehingga keluarga
+- **Daftar keluarga**: layar kosong dan tombol 🏠 menampilkan semua keluarga di
+  database (nama, jumlah orang, kode) dari `GET /api/families`, satu tekan untuk
+  membuka. **➕ Silsilah Baru** dari Dashboard melepaskan kode, sehingga keluarga
   berikutnya mendapat kode baru dan tidak menimpa dokumen lama.
 - Keamanan: kode berlaku seperti password: siapa pun yang tahu kode bisa
   membaca/menimpa data. **Daftar keluarga bersifat publik** — semua kode keluarga
@@ -113,8 +114,12 @@ KV lokal disimulasikan wrangler: tidak perlu akun untuk uji coba.
   lama yang belum pernah ditulis ulang). **Publik, tanpa autentikasi.**
 - `PUT /api/data` body `{ kode, data }` → `{ ok: true }`; sekaligus menulis
   metadata `{ nama, jumlah }` yang dipakai `GET /api/families`.
+- `DELETE /api/data?kode=<kode>&konfirmasi=ya` → menghapus dokumen dari KV.
+  Tanpa `konfirmasi=ya` ditolak `400`; kode yang tidak ada `404`. **Permanen.**
 - Kode dinormalisasi huruf kecil; validasi bentuk dokumen sama seperti
-  "Buka File" (`nama_keluarga` string, `anggota` array), maks ±1 MB.
+  dokumen aplikasi (`nama_keluarga` string, `anggota` array), maks ±1 MB.
+  `PUT` dan `DELETE` tidak memakai autentikasi tambahan; lindungi dengan
+  Cloudflare Access bila daftar/penghapusan tidak boleh publik.
 
 Kode sumber: `functions/api/data.js` + `functions/api/families.js` (server),
 `src/cloud.js` (klien), `src/sinkron.js` (autosave).

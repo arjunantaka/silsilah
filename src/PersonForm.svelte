@@ -24,6 +24,7 @@
   let pilihIbu = ''
   /** @type {string} */
   let pilihPasang = '' // mode 'pasang'
+  let cariPasang = ''
   /** @type {FormUI|null} */
   let formTerakhir = null
 
@@ -49,6 +50,7 @@
       pilihAyah = form.mode === 'ortu' ? target?.ayah || '' : ''
       pilihIbu = form.mode === 'ortu' ? target?.ibu || '' : ''
       pilihPasang = ''
+      cariPasang = ''
     }
   }
 
@@ -56,14 +58,33 @@
   $: namaIbu = ortu?.ibu ? byId.get(ortu.ibu)?.nama || '?' : null
 
   // Kandidat sambung: semua orang lain, selain diri sendiri; untuk 'pasang',
-  // buang yang sudah jadi pasangan target.
-  $: anggotaLain = form?.targetId ? $data.anggota.filter((a) => a.id !== form.targetId) : []
+  // buang yang sudah jadi pasangan target. Urut alfabetis agar dropdown besar
+  // tetap mudah dipindai; pencarian menyaring berdasarkan nama/kode.
+  $: anggotaLain = form?.targetId
+    ? $data.anggota
+        .filter((a) => a.id !== form.targetId)
+        .sort(
+          (a, b) =>
+            a.nama.localeCompare(b.nama, 'id', { sensitivity: 'base' }) ||
+            (a.kode || '').localeCompare(b.kode || '', 'id', { numeric: true }),
+        )
+    : []
   $: kandidatPasang = (() => {
     const tid = form?.targetId
     if (!tid) return []
     const pasanganTarget = byId.get(tid)?.pasangan || []
     return anggotaLain.filter((a) => !pasanganTarget.includes(a.id))
   })()
+  $: kataPasang = cariPasang.trim().toLowerCase()
+  $: kandidatPasangTampil = !kataPasang
+    ? kandidatPasang
+    : kandidatPasang.filter(
+        (a) =>
+          a.nama.toLowerCase().includes(kataPasang) ||
+          (a.kode || '').toLowerCase().includes(kataPasang),
+      )
+  // Jangan biarkan pilihan lama menunjuk orang yang tidak lagi terlihat.
+  $: if (pilihPasang && !kandidatPasangTampil.some((a) => a.id === pilihPasang)) pilihPasang = ''
 
   // Kode duplikat diizinkan (user yang mengetik), tapi diperingatkan di form.
   $: duplikat = kode.trim()
@@ -150,13 +171,30 @@
           </p>
         {:else if form.mode === 'pasang'}
           <div class="medan">
+            <label for="f-cari-pasang">Cari orang</label>
+            <input
+              id="f-cari-pasang"
+              type="search"
+              placeholder="Ketik nama atau kode…"
+              autocomplete="off"
+              bind:value={cariPasang}
+            />
+          </div>
+          <div class="medan">
             <label for="f-pasang">Pasangkan dengan:</label>
             <select id="f-pasang" required bind:value={pilihPasang}>
               <option value="">(pilih orang)</option>
-              {#each kandidatPasang as a (a.id)}
-                <option value={a.id}>{a.nama}</option>
+              {#each kandidatPasangTampil as a (a.id)}
+                <option value={a.id}>{a.nama}{#if a.kode}{' · '}{a.kode}{/if}</option>
               {/each}
             </select>
+            <p class="info-pembaca">
+              {#if kandidatPasangTampil.length === 0}
+                Tidak ada nama yang cocok.
+              {:else}
+                {kandidatPasangTampil.length} orang, urut A–Z.
+              {/if}
+            </p>
           </div>
         {:else}
         <div class="medan">

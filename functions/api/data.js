@@ -56,3 +56,19 @@ export async function onRequestPut({ request, env }) {
   })
   return sukses(kode)
 }
+
+/** @param {{ request: Request, env: Record<string, unknown> }} ctx */
+export async function onRequestDelete({ request, env }) {
+  if (!env.SILSILAH_KV) return gagal(KV_HILANG, 503)
+  const url = new URL(request.url)
+  const kode = (url.searchParams.get('kode') || '').trim().toLowerCase()
+  if (!POLA_KODE.test(kode)) return gagal(KODE_TAK_VALID, 400)
+  if (url.searchParams.get('konfirmasi') !== 'ya') {
+    return gagal('Konfirmasi hapus diperlukan: sertakan konfirmasi=ya.', 400)
+  }
+  const ada = await env.SILSILAH_KV.get(kode)
+  if (ada === null) return gagal('Kode belum ada di cloud.', 404)
+  await env.SILSILAH_KV.delete(kode)
+  return sukses(kode)
+}
+

@@ -1,6 +1,7 @@
-// Export/buka file JSON & CSV, dan util nama file.
+// Unduh CSV, dan util nama file.
 import { get } from 'svelte/store'
-import { data, muatJSON, generasiKeturunan } from './store.js'
+import { data, generasiKeturunan } from './store.js'
+import { bandingKode } from './urut.js'
 
 /**
  * @import { Anggota } from './store.js'
@@ -23,12 +24,6 @@ function unduh(blob, namaFile) {
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
-export function unduhJSON() {
-  const d = get(data)
-  const blob = new Blob([JSON.stringify(d, null, 2)], { type: 'application/json' })
-  unduh(blob, `silsilah-${slugNama()}.json`)
-}
-
 /** @param {unknown} nilai @returns {string} */
 function kolomCSV(nilai) {
   return `"${String(nilai ?? '').replace(/"/g, '""')}"`
@@ -40,15 +35,8 @@ export function unduhCSV() {
   const baris = [
     ['kode', 'nama', 'gender', 'tempat_lahir', 'lahir', 'wafat', 'alamat', 'pekerjaan', 'ayah', 'ibu', 'pasangan', 'catatan'],
   ]
-  // Urut kode natural (A1P2 < A1P10); tanpa kode di akhir, diurutkan nama.
-  const urut = [...d.anggota].sort((a, b) => {
-    const ka = a.kode || ''
-    const kb = b.kode || ''
-    if (ka && !kb) return -1
-    if (!ka && kb) return 1
-    if (ka !== kb) return ka.localeCompare(kb, 'id', { numeric: true })
-    return a.nama.localeCompare(b.nama, 'id')
-  })
+  // Urut kode natural (A1P2 < A1P10), case-insensitive; tanpa kode di akhir.
+  const urut = [...d.anggota].sort(bandingKode)
   for (const a of urut) {
     baris.push([
       a.kode || '',
@@ -107,16 +95,4 @@ export function unduhKeturunanCSV(akarId) {
   const csv = '\uFEFF' + baris.map((r) => r.map(kolomCSV).join(',')).join('\r\n')
   const slug = akar.nama.toLowerCase().replace(/[^a-z0-9]+/g, '-')
   unduh(new Blob([csv], { type: 'text/csv;charset=utf-8' }), `keturunan-${slug || 'silsilah'}.csv`)
-}
-
-/** @param {File} file */
-export async function bukaFile(file) {
-  let obj
-  try {
-    obj = JSON.parse(await file.text())
-  } catch {
-    alert('File tidak dikenali sebagai file silsilah.')
-    return
-  }
-  return muatJSON(obj)
 }

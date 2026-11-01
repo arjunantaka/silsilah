@@ -14,7 +14,10 @@ export const kodeKeluarga = writable(localStorage.getItem(KEY_KODE) || '')
 
 /** @type {any} */
 let timer = null
-let sedang = false
+/** @type {Promise<void>|null} */
+let antre = null
+// Ada perubahan baru yang belum masuk ke permintaan PUT mana pun.
+let perlu = false
 
 /** @param {string} kode */
 function setKode(kode) {
@@ -33,25 +36,47 @@ export function lepasKode() {
   } catch {}
 }
 
-/** Simpan sekarang tanpa menunggu debounce; juga tombol "Coba lagi". */
-export async function simpanSekarang() {
-  const d = get(data)
-  if (sedang || d.anggota.length === 0) return
-  sedang = true
-  statusSinkron.set('menyimpan')
-  try {
-    let kode = get(kodeKeluarga)
-    if (!kode) {
-      kode = await buatKodeBaru()
-      setKode(kode)
+/**
+ * Simpan sekarang tanpa menunggu debounce; juga tombol "Coba lagi".
+ *
+ * Perubahan yang datang saat PUT sedang berjalan tidak boleh hilang: dulu
+ * pemanggilan kedua langsung `return` karena `sedang`, lalu status tetap
+ * "tersimpan" padahal nama/anggota terbaru belum pernah dikirim. Sekarang
+ * semua pemanggil masuk antrean dan antrean mengulang selama masih ada
+ * perubahan baru.
+ */
+export function simpanSekarang() {
+  perlu = true
+  if (antre) return antre
+
+  antre = (async () => {
+    let berhasil = true
+    try {
+      while (perlu) {
+        perlu = false
+        const d = get(data)
+        if (d.anggota.length === 0) break
+        statusSinkron.set('menyimpan')
+        let kode = get(kodeKeluarga)
+        if (!kode) {
+          kode = await buatKodeBaru()
+          setKode(kode)
+        }
+        await simpanKeCloud(kode)
+        statusSinkron.set('tersimpan')
+      }
+    } catch {
+      berhasil = false
+      statusSinkron.set('gagal')
+    } finally {
+      antre = null
     }
-    await simpanKeCloud(kode)
-    statusSinkron.set('tersimpan')
-  } catch {
-    statusSinkron.set('gagal')
-  } finally {
-    sedang = false
-  }
+    if (perlu) {
+      if (berhasil) simpanSekarang()
+      else perlu = false // biarkan pengguna menekan "Coba lagi" / perubahan berikutnya
+    }
+  })()
+  return antre
 }
 
 function jadwal() {
@@ -64,7 +89,16 @@ function jadwal() {
  * nilai sekarang, jadi perangkat dengan data lokal lama ikut terdorong 3 detik setelah dibuka.
  */
 export function mulaiSinkron() {
-  return data.subscribe((d) => {
+  const berhenti = data.subscribe((d) => {
     if (d.anggota.length > 0) jadwal()
   })
+  // Coba lagi otomatis setelah koneksi kembali, tanpa menunggu edit berikutnya.
+  const online = () => {
+    if (get(statusSinkron) === 'gagal') simpanSekarang()
+  }
+  window.addEventListener('online', online)
+  return () => {
+    berhenti()
+    window.removeEventListener('online', online)
+  }
 }

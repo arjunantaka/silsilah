@@ -1,6 +1,7 @@
 <script>
   import { data, ui } from './store.js'
   import CoupleNode from './CoupleNode.svelte'
+  import { bandingKode } from './urut.js'
 
   /**
    * @import { Anggota } from './store.js'
@@ -10,9 +11,12 @@
   export let anchorId
   /** @type {string[]} */
   export let jalur = []
+  // `anggota` opsional: mode fokus trah menggambar sub-pohon hasil trahDari().
+  /** @type {import('./store.js').Anggota[]|null} */
+  export let anggota = null
 
-  $: anggota = $data.anggota
-  $: byId = new Map(anggota.map((a) => [a.id, a]))
+  $: daftar = anggota ?? $data.anggota
+  $: byId = new Map(daftar.map((a) => [a.id, a]))
   $: anchor = byId.get(anchorId)
 
   // Pengaman siklus (file impor bisa rusak): anchor sudah di jalur -> kotak saja.
@@ -50,8 +54,8 @@
     }
     return hasil
   }
-  $: pasanganMasuk = pasanganDari(anchor, false)
-  $: pasanganLuar = pasanganDari(anchor, true)
+  $: pasanganMasuk = pasanganDari(anchor, false).sort(bandingKode)
+  $: pasanganLuar = pasanganDari(anchor, true).sort(bandingKode)
 
   // Satu baris per pasangan yang masuk; bila tidak ada pasangan, satu baris tunggal.
   // Kotak anchor digambar penuh di baris pertama; di baris berikutnya anchor muncul
@@ -65,7 +69,7 @@
   // pasangan), kalau tidak baris pertama. Tetap satu baris per anak.
   /** @param {{a: string, s: string|null}} b @param {{a: string, s: string|null}[]} rows @returns {Anggota[]} */
   function anakUntukBaris(b, rows) {
-    return anggota.filter((c) => {
+    const hasil = daftar.filter((c) => {
       const owner = pemilik(c)
       if (!owner) return false
       if (owner !== b.a && owner !== b.s) return false
@@ -75,6 +79,13 @@
         rows.find((r) => r.s === owner) ||
         rows[0]
       return target === b
+    })
+    // Anak kandung anchor lebih dulu; anak bawaan pasangan (keluarga tiri)
+    // setelahnya. Di dalam masing-masing kelompok tetap urut kode.
+    return hasil.sort((x, y) => {
+      const xLangsung = x.ayah === b.a || x.ibu === b.a ? 0 : 1
+      const yLangsung = y.ayah === b.a || y.ibu === b.a ? 0 : 1
+      return xLangsung - yLangsung || bandingKode(x, y)
     })
   }
 
@@ -172,7 +183,7 @@
             <ul class="anak">
               {#each anak as c (c.id)}
                 <li>
-                  <CoupleNode anchorId={c.id} jalur={jalurBaru} />
+                  <CoupleNode anchorId={c.id} jalur={jalurBaru} anggota={daftar} />
                 </li>
               {/each}
             </ul>
