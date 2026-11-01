@@ -66,7 +66,7 @@ test('hapus membersihkan pointer', async ({ page }) => {
 
 async function buatLepas(page: Page, nama: string, kode = '') {
   await page.getByRole('button', { name: '☰ Menu' }).click()
-  await page.getByRole('button', { name: /Tambah Orang \(Lepas\)/ }).click()
+  await page.getByRole('button', { name: /Tambah Orang/ }).click()
   await page.getByLabel('Nama').fill(nama)
   if (kode) await page.locator('#f-kode').fill(kode)
   await page.getByRole('button', { name: 'Simpan' }).click()
@@ -279,13 +279,222 @@ test('pencarian nama dan kode manual', async ({ page }) => {
   await buatLepas(page, 'Dewi', 'KD-09')
 
   const cari = page.getByPlaceholder(/Cari nama/)
+
+  // Klik hasil = fokus trah (orang + pasangan + turunan), bukan sekadar gulir.
   await cari.fill('sar')
   await page.locator('.hasil-cari button', { hasText: 'Sari' }).click()
-  await expect(page.locator('.panel-kepala h2')).toContainText('Sari')
-  await tutupSheet(page)
+  await expect(page.locator('.fokus-trah')).toContainText('Trah Sari')
+  await expect(page.locator('.kotak')).toHaveCount(3)
+  await page.getByRole('button', { name: /Kembali ke Silsilah/i }).click()
+  await expect(page.locator('.fokus-trah')).toHaveCount(0)
+  await expect(page.locator('.kotak')).toHaveCount(4)
 
+  // Cari lewat kode juga bisa; detail tetap dibuka dari kotak di pohon.
   await cari.fill('kd-09')
   await expect(page.locator('.hasil-cari button')).toContainText('Dewi · KD-09')
   await page.locator('.hasil-cari button', { hasText: 'Dewi' }).click()
+  await expect(page.locator('.fokus-trah')).toContainText('Trah Dewi')
+  await expect(page.locator('.kotak')).toHaveCount(1)
+  await page.locator('.kotak', { hasText: 'Dewi' }).click()
   await expect(page.locator('.panel-kepala h2')).toContainText('Dewi')
+})
+
+test('kembali ke daftar keluarga lalu lanjut tanpa kehilangan data', async ({ page }) => {
+  await bangunKeluarga(page)
+
+  await page.getByRole('button', { name: 'Daftar keluarga' }).click()
+  await expect(page.locator('.daftar-layar')).toContainText('Daftar Keluarga')
+  await expect(page).toHaveURL(/\?daftar=1/)
+
+  // Refresh saat di dashboard harus tetap di dashboard.
+  await page.reload()
+  await expect(page.locator('.daftar-layar')).toContainText('Daftar Keluarga')
+  await expect(page).toHaveURL(/\?daftar=1/)
+
+  await page.getByRole('button', { name: /Kembali ke/ }).click()
+  await expect(page.locator('.daftar-layar')).toHaveCount(0)
+  await expect(page.locator('.kotak')).toHaveCount(3)
+})
+
+test('ganti nama keluarga bertahan setelah reload', async ({ page }) => {
+  test.setTimeout(60000)
+  await bangunKeluarga(page)
+  page.on('dialog', (d) => d.accept('Keluarga Baru'))
+  await page.locator('.nama-keluarga').click()
+  await expect(page.locator('.nama-keluarga')).toContainText('Keluarga Baru')
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('silsilah:v1') || '{}').nama_keluarga)).toBe('Keluarga Baru')
+
+  await page.reload()
+  await expect(page.locator('.nama-keluarga')).toContainText('Keluarga Baru')
+})
+
+test('zoom pohon bisa diperbesar, dikembalikan, dan dipas-kan ke layar', async ({ page }) => {
+  await bangunKeluarga(page)
+
+  expect(await page.locator('.pohon').evaluate((el) => Number(getComputedStyle(el).zoom))).toBe(1)
+  await page.getByRole('button', { name: 'Perbesar pohon' }).click()
+  expect(await page.locator('.pohon').evaluate((el) => Number(getComputedStyle(el).zoom))).toBeGreaterThan(1)
+  await page.getByRole('button', { name: /%/ }).click()
+  expect(await page.locator('.pohon').evaluate((el) => Number(getComputedStyle(el).zoom))).toBe(1)
+
+  await page.getByRole('button', { name: 'Pas layar' }).click()
+  expect(await page.locator('.pohon').evaluate((el) => Number(getComputedStyle(el).zoom))).toBeLessThanOrEqual(1)
+})
+
+
+test('menu ringkas: tambah orang menonjol, impor/ekspor JSON hilang', async ({ page }) => {
+  await bangunKeluarga(page)
+  await page.getByRole('button', { name: '☰ Menu' }).click()
+  const panel = page.locator('.menu-panel')
+  await expect(panel).toContainText('Daftar Keluarga')
+  await expect(panel.getByRole('button', { name: /Tambah Orang/ })).toHaveClass(/utama/)
+  await expect(panel).not.toContainText('Simpan File')
+  await expect(panel).not.toContainText('Buka File')
+  await expect(panel).not.toContainText('Ambil dari Cloud')
+  await expect(panel).not.toContainText('Silsilah Baru')
+  await expect(panel).toContainText('Unduh CSV')
+  await expect(panel).toContainText('Cetak / PDF')
+
+  // Media print: judul keluarga terlihat, status autosave tidak ikut tercetak.
+  await page.emulateMedia({ media: 'print' })
+  await expect(page.locator('.cetak-kepala')).toBeVisible()
+  await expect(page.locator('.cetak-kepala h1')).toHaveText('Keluarga Saya')
+  await expect(page.locator('.status-sinkron')).toBeHidden()
+  await page.emulateMedia({ media: 'screen' })
+})
+
+test('daftar anak di detail mengikuti kode, bukan urutan input', async ({ page }) => {
+  const orang = (id: string, nama: string, kode: string, ayah: string | null) => ({
+    id,
+    nama,
+    kode,
+    gender: 'L',
+    lahir: '',
+    wafat: '',
+    catatan: '',
+    tempat_lahir: '',
+    alamat: '',
+    pekerjaan: '',
+    ayah,
+    ibu: null,
+    pasangan: [],
+    pisah: [],
+  })
+  const doc = {
+    nama_keluarga: 'Urut Kode',
+    anggota: [
+      orang('root', 'Root', 'EK', null),
+      orang('c3', 'Anak C', 'A2', 'root'),
+      orang('c1', 'Anak A', 'A1', 'root'),
+      orang('c2', 'Anak B', 'A1P1', 'root'),
+    ],
+  }
+  await page.addInitScript((d) => localStorage.setItem('silsilah:v1', JSON.stringify(d)), doc)
+  await page.goto('/')
+  await page.locator('.kotak', { hasText: 'Root' }).click()
+  await expect(page.locator('.panel-bawah .grup .kait')).toHaveText(['Anak A', 'Anak B', 'Anak C'])
+})
+
+test('anak kandung tampil sebelum anak bawaan, meski kodenya lebih besar', async ({ page }) => {
+  const orang = (id: string, nama: string, kode: string, ayah: string | null, ibu: string | null) => ({
+    id,
+    nama,
+    kode,
+    gender: 'L',
+    lahir: '',
+    wafat: '',
+    catatan: '',
+    tempat_lahir: '',
+    alamat: '',
+    pekerjaan: '',
+    ayah,
+    ibu,
+    pasangan: [],
+    pisah: [],
+  })
+  const doc = {
+    nama_keluarga: 'Urut Trah',
+    anggota: [
+      orang('root', 'Budi', 'EK', null, null),
+      orang('istri', 'Sari', 'M1', null, null),
+      orang('tiri', 'Tiri', 'A1', null, 'istri'),
+      orang('kandung', 'Ani', 'A2', 'root', 'istri'),
+    ],
+  }
+  // Pasangan harus saling menunjuk agar digambar sebagai satu unit.
+  doc.anggota[0].pasangan = ['istri']
+  doc.anggota[1].pasangan = ['root']
+
+  await page.addInitScript((d) => localStorage.setItem('silsilah:v1', JSON.stringify(d)), doc)
+  await page.goto('/')
+  const anak = page.locator('.pohon > .kolom > .node > ul.anak > li .kotak[data-id]')
+  await expect(anak).toHaveText([/Ani/, /Tiri/])
+})
+
+test('rename langsung memperbarui nama di dashboard', async ({ page }) => {
+  let namaServer = 'Keluarga Awal'
+  const doc = {
+    nama_keluarga: namaServer,
+    anggota: [
+      {
+        id: 'a', nama: 'Ani', kode: 'A1', gender: 'P', lahir: '', wafat: '', catatan: '',
+        tempat_lahir: '', alamat: '', pekerjaan: '', ayah: null, ibu: null, pasangan: [], pisah: [],
+      },
+    ],
+  }
+  await page.addInitScript((d) => {
+    localStorage.setItem('silsilah:v1', JSON.stringify(d))
+    localStorage.setItem('silsilah:kode', 'keluarga-uji-rename')
+  }, doc)
+  await page.route('**/api/**', async (route) => {
+    const req = route.request()
+    const url = new URL(req.url())
+    if (req.method() === 'PUT' && url.pathname === '/api/data') {
+      namaServer = JSON.parse(req.postData() || '{}').data.nama_keluarga
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, data: 'keluarga-uji-rename' }) })
+      return
+    }
+    if (url.pathname === '/api/families') {
+      // Simulasikan KV list/metadata yang tertinggal: keluarga aktif tetap
+      // harus muncul dari data lokal dengan nama terbaru.
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ ok: true, data: [] }),
+      })
+      return
+    }
+    await route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ ok: false }) })
+  })
+
+  page.on('dialog', (d) => d.accept('Keluarga Rename'))
+  await page.goto('/')
+  await page.locator('.nama-keluarga').click()
+  await expect(page.locator('.nama-keluarga')).toContainText('Keluarga Rename')
+
+  await page.getByRole('button', { name: 'Daftar keluarga' }).click()
+  await expect(page.locator('.daftar-keluarga')).toContainText('Keluarga Rename')
+  await expect(page.locator('.daftar-keluarga')).not.toContainText('Keluarga Awal')
+})
+
+test('Pasangkan dengan: kandidat urut A-Z dan bisa dicari', async ({ page }) => {
+  const orang = (id: string, nama: string) => ({
+    id, nama, kode: '', gender: 'L', lahir: '', wafat: '', catatan: '',
+    tempat_lahir: '', alamat: '', pekerjaan: '', ayah: null, ibu: null, pasangan: [], pisah: [],
+  })
+  const doc = {
+    nama_keluarga: 'Cari Pasangan',
+    anggota: [orang('target', 'Saya'), orang('z', 'Zaki'), orang('a', 'Ani'), orang('b', 'Budi'), orang('c', 'Citra')],
+  }
+  await page.addInitScript((d) => localStorage.setItem('silsilah:v1', JSON.stringify(d)), doc)
+  await page.goto('/')
+  await page.locator('.kotak', { hasText: 'Saya' }).click()
+  await page.getByRole('button', { name: /Pasangkan dengan/ }).click()
+
+  const opsi = page.locator('#f-pasang option')
+  await expect(opsi).toHaveText(['(pilih orang)', 'Ani', 'Budi', 'Citra', 'Zaki'])
+  await page.locator('#f-cari-pasang').fill('an')
+  await expect(opsi).toHaveText(['(pilih orang)', 'Ani'])
+  await page.locator('#f-pasang').selectOption({ label: 'Ani' })
+  await expect(page.locator('#f-pasang')).toHaveValue('a')
 })
