@@ -544,8 +544,66 @@ button.kecil {
 
 /* ---------- Form ---------- */
 .medan { margin: 12px 0; }
-.medan label { display: block; font-weight: 600; margin-bottom: 4px; }
+.medan label, .label-medan { display: block; font-weight: 600; margin-bottom: 4px; }
 .medan input[type='text'], .medan textarea { font-size: 18px; }
+.pilih-terpilih { display: flex; flex-direction: column; gap: 6px; }
+.pilih-ringkas {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--latar);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.pilih-ringkas > span { color: var(--teks-redup); font-size: 14px; }
+.pilih-ringkas strong { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.pilih-hapus {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 2px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--kartu);
+  color: var(--bahaya);
+}
+.pilih-peran { display: flex; gap: 8px; }
+.pilih-peran button { flex: 1; min-height: 48px; }
+.pilih-peran button.aktif {
+  background: var(--hijau);
+  border-color: var(--hijau);
+  color: #fff;
+  font-weight: 700;
+}
+.pilih-hasil {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 260px;
+  overflow: auto;
+  border: 2px solid var(--border);
+  border-radius: 10px;
+  background: var(--kartu);
+}
+.pilih-hasil li + li { border-top: 1px solid var(--border); }
+.pilih-baris {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 48px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  text-align: left;
+}
+.pilih-baris.terpilih { background: var(--hijau-muda); }
+.pilih-nama { flex: 1; min-width: 0; overflow-wrap: anywhere; font-weight: 600; }
+.pilih-kode { color: var(--teks-redup); font-size: 14px; }
+.pilih-tanda { color: var(--hijau-tua); font-size: 13px; font-weight: 700; white-space: nowrap; }
+button:disabled { opacity: 0.55; cursor: not-allowed; }
 .radio-baris { display: flex; gap: 8px; flex-wrap: wrap; }
 .radio-baris label {
   flex: 1 1 auto;

@@ -257,17 +257,20 @@ test('Pasangkan dengan menyimpan relasi dua arah dan menyaring kandidat', async 
   await expect(form).toBeVisible()
 
   // Diri sendiri dan pasangan yang sudah ada tidak muncul sebagai kandidat.
-  const opsi = page.locator('#f-pasang option')
-  await expect(opsi).toHaveText(['(pilih orang)', 'Bunga · B1', 'Citra · C1'])
+  const hasil = form.locator('.pilih-hasil .pilih-nama')
+  await expect(hasil).toHaveText(['Bunga', 'Citra'])
+  await expect(form.getByRole('button', { name: 'Simpan' })).toBeDisabled()
 
   // Pencarian kode menyaring daftar; kata tanpa hasil memberi pesan.
   await page.locator('#f-cari-pasang').fill('b1')
-  await expect(opsi).toHaveText(['(pilih orang)', 'Bunga · B1'])
+  await expect(hasil).toHaveText(['Bunga'])
   await expect(form).toContainText('1 orang, urut A–Z.')
   await page.locator('#f-cari-pasang').fill('zz')
   await expect(form).toContainText('Tidak ada nama yang cocok.')
   await page.locator('#f-cari-pasang').fill('b1')
-  await page.locator('#f-pasang').selectOption({ label: 'Bunga · B1' })
+  await form.getByRole('button', { name: /Pilih Bunga .* sebagai pasangan/ }).click()
+  await expect(form).toContainText('Bunga')
+  await expect(form.getByRole('button', { name: 'Simpan' })).toBeEnabled()
   await form.getByRole('button', { name: 'Simpan' }).click()
   await expect(form).toHaveCount(0)
 
@@ -303,8 +306,14 @@ test('Jadikan Anak menyambung ke orang tua lalu melepasnya kembali tanpa duplika
   await bukaOrang(page, 'Tono')
   await page.getByRole('button', { name: /Jadikan Anak/ }).click()
   const form = formPanel(page)
-  await page.locator('#f-ayah').selectOption({ label: 'Slamet' })
-  await page.locator('#f-ibu').selectOption({ label: 'Sri' })
+  await page.locator('#f-cari-ortu').fill('slamet')
+  await form.getByRole('button', { name: 'Pilih untuk Ayah' }).click()
+  await form.getByRole('button', { name: /Pilih Slamet .* sebagai ayah/ }).click()
+  await page.locator('#f-cari-ortu').fill('sri')
+  await form.getByRole('button', { name: 'Pilih untuk Ibu' }).click()
+  await form.getByRole('button', { name: /Pilih Sri .* sebagai ibu/ }).click()
+  await expect(form).toContainText('Slamet')
+  await expect(form).toContainText('Sri')
   await form.getByRole('button', { name: 'Simpan' }).click()
   await expect(form).toHaveCount(0)
   await expect(panelData(page)).toContainText('Orang tua: Slamet & Sri')
@@ -318,8 +327,8 @@ test('Jadikan Anak menyambung ke orang tua lalu melepasnya kembali tanpa duplika
   // Lepas kedua orang tua: kembali ke akar, tetap satu kotak (tidak dobel).
   await bukaOrang(page, 'Tono')
   await page.getByRole('button', { name: /Jadikan Anak/ }).click()
-  await page.locator('#f-ayah').selectOption({ label: '(tidak diketahui)' })
-  await page.locator('#f-ibu').selectOption({ label: '(tidak diketahui)' })
+  await page.getByRole('button', { name: 'Kosongkan ayah' }).click()
+  await page.getByRole('button', { name: 'Kosongkan ibu' }).click()
   await form.getByRole('button', { name: 'Simpan' }).click()
   await expect(form).toHaveCount(0)
   await expect(panelData(page)).not.toContainText('Orang tua:')
@@ -336,7 +345,7 @@ test('Jadikan Anak menyambung ke orang tua lalu melepasnya kembali tanpa duplika
   expect(tono.ibu).toBe(null)
 })
 
-test('Jadikan Anak: pencarian orang tua menyaring dua dropdown dan menjaga pilihan', async ({
+test('Jadikan Anak: pencarian menyaring daftar dan menjaga pilihan ayah/ibu', async ({
   page,
 }) => {
   await siapkanApi(page)
@@ -353,38 +362,31 @@ test('Jadikan Anak: pencarian orang tua menyaring dua dropdown dan menjaga pilih
   await page.getByRole('button', { name: /Jadikan Anak/ }).click()
   const form = formPanel(page)
   const cari = page.locator('#f-cari-ortu')
+  const hasil = form.locator('.pilih-hasil .pilih-nama')
 
   await expect(cari).toBeVisible()
-  await expect(page.locator('#f-ayah option')).toHaveText([
-    '(tidak diketahui)',
-    'Ayah Satu',
-    'Ibu Dua',
-    'Lain Tiga',
-  ])
+  await expect(hasil).toHaveText(['Ayah Satu', 'Ibu Dua', 'Lain Tiga'])
   await expect(form).toContainText('3 orang, urut A–Z.')
 
-  // Cari lewat kode: kedua dropdown sama-sama tersaring.
+  // Cari lewat kode, lalu pilih sebagai Ibu.
   await cari.fill('k02')
-  await expect(page.locator('#f-ayah option')).toHaveText(['(tidak diketahui)', 'Ibu Dua'])
-  await expect(page.locator('#f-ibu option')).toHaveText(['(tidak diketahui)', 'Ibu Dua'])
-  await page.locator('#f-ibu').selectOption({ label: 'Ibu Dua' })
+  await expect(hasil).toHaveText(['Ibu Dua'])
+  await form.getByRole('button', { name: 'Pilih untuk Ibu' }).click()
+  await form.getByRole('button', { name: /Pilih Ibu Dua .* sebagai ibu/ }).click()
+  await expect(form).toContainText('Ibu Dua')
 
-  // Mengetik nama ayah tidak menghapus pilihan ibu yang tidak cocok.
+  // Pilihan ibu tetap ada saat mencari ayah; daftar tidak menghapus pilihan.
   await cari.fill('ayah')
-  await expect(page.locator('#f-ayah option')).toHaveText(['(tidak diketahui)', 'Ayah Satu'])
-  await expect(page.locator('#f-ibu option')).toHaveText([
-    '(tidak diketahui)',
-    'Ayah Satu',
-    'Ibu Dua',
-  ])
-  await expect(page.locator('#f-ibu')).toHaveValue('ibu')
-  await page.locator('#f-ayah').selectOption({ label: 'Ayah Satu' })
+  await expect(hasil).toHaveText(['Ayah Satu'])
+  await expect(form).toContainText('Ibu Dua')
+  await form.getByRole('button', { name: 'Pilih untuk Ayah' }).click()
+  await form.getByRole('button', { name: /Pilih Ayah Satu .* sebagai ayah/ }).click()
 
-  // Pencarian tanpa hasil tetap mempertahankan kedua pilihan.
+  // Pencarian tanpa hasil tidak menghapus pilihan yang sudah dibuat.
   await cari.fill('tidak-ada')
   await expect(form).toContainText('Tidak ada nama yang cocok.')
-  await expect(page.locator('#f-ayah option')).toHaveText(['(tidak diketahui)', 'Ayah Satu'])
-  await expect(page.locator('#f-ibu option')).toHaveText(['(tidak diketahui)', 'Ibu Dua'])
+  await expect(form).toContainText('Ayah Satu')
+  await expect(form).toContainText('Ibu Dua')
   await form.getByRole('button', { name: 'Simpan' }).click()
 
   await expect(panelData(page)).toContainText('Orang tua: Ayah Satu & Ibu Dua')

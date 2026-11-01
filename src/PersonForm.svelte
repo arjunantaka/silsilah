@@ -26,6 +26,8 @@
   let pilihPasang = '' // mode 'pasang'
   let cariPasang = ''
   let cariOrtu = '' // mode 'ortu'
+  /** @type {'ayah'|'ibu'} */
+  let peranOrtu = 'ayah'
   /** @type {FormUI|null} */
   let formTerakhir = null
 
@@ -53,6 +55,7 @@
       pilihPasang = ''
       cariPasang = ''
       cariOrtu = ''
+      peranOrtu = target?.ayah && !target?.ibu ? 'ibu' : 'ayah'
     }
   }
 
@@ -89,32 +92,22 @@
   $: kandidatPasangTampil = !kataPasang
     ? kandidatPasang
     : kandidatPasang.filter((a) => cocokCari(a, kataPasang))
-  // Jangan biarkan pilihan lama menunjuk orang yang tidak lagi terlihat.
-  $: if (pilihPasang && !kandidatPasangTampil.some((a) => a.id === pilihPasang)) pilihPasang = ''
 
-  // Pencarian orang tua menyaring kedua dropdown. Pilihan ayah/ibu yang sudah
-  // ada tetap ditampilkan agar mengetik nama ibu tidak menghapus pilihan ayah.
   $: kataOrtu = cariOrtu.trim().toLowerCase()
   $: kandidatOrtu = !kataOrtu
     ? anggotaLain
     : anggotaLain.filter((a) => cocokCari(a, kataOrtu))
-  $: opsiAyah = opsiOrtu(pilihAyah, kandidatOrtu, byId)
-  $: opsiIbu = opsiOrtu(pilihIbu, kandidatOrtu, byId)
 
-  /**
-   * @param {string} terpilih
-   * @param {import('./store.js').Anggota[]} kandidat
-   * @param {Map<string, import('./store.js').Anggota>} peta
-   * @returns {import('./store.js').Anggota[]}
-   */
-  function opsiOrtu(terpilih, kandidat, peta) {
-    const orang = terpilih ? peta.get(terpilih) : null
-    if (!orang || kandidat.some((a) => a.id === terpilih)) return kandidat
-    return [...kandidat, orang].sort(
-      (a, b) =>
-        a.nama.localeCompare(b.nama, 'id', { sensitivity: 'base' }) ||
-        (a.kode || '').localeCompare(b.kode || '', 'id', { numeric: true }),
-    )
+  /** @param {'ayah'|'ibu'} peran @param {string} id */
+  function pilihOrtu(peran, id) {
+    if (peran === 'ayah') pilihAyah = id
+    else pilihIbu = id
+  }
+
+  /** @param {'ayah'|'ibu'} peran */
+  function kosongkanOrtu(peran) {
+    if (peran === 'ayah') pilihAyah = ''
+    else pilihIbu = ''
   }
 
   // Kode duplikat diizinkan (user yang mengetik), tapi diperingatkan di form.
@@ -178,6 +171,36 @@
       <form on:submit|preventDefault={simpan}>
         {#if form.mode === 'ortu'}
           <div class="medan">
+            <span class="label-medan">Pilihan orang tua</span>
+            <div class="pilih-terpilih">
+              <div class="pilih-ringkas">
+                <span>Ayah</span>
+                <strong>{pilihAyah ? byId.get(pilihAyah)?.nama || '?' : '(tidak diketahui)'}</strong>
+                {#if pilihAyah}
+                  <button
+                    type="button"
+                    class="pilih-hapus"
+                    aria-label="Kosongkan ayah"
+                    on:click={() => kosongkanOrtu('ayah')}
+                  >✕</button>
+                {/if}
+              </div>
+              <div class="pilih-ringkas">
+                <span>Ibu</span>
+                <strong>{pilihIbu ? byId.get(pilihIbu)?.nama || '?' : '(tidak diketahui)'}</strong>
+                {#if pilihIbu}
+                  <button
+                    type="button"
+                    class="pilih-hapus"
+                    aria-label="Kosongkan ibu"
+                    on:click={() => kosongkanOrtu('ibu')}
+                  >✕</button>
+                {/if}
+              </div>
+            </div>
+          </div>
+
+          <div class="medan">
             <label for="f-cari-ortu">Cari orang</label>
             <input
               id="f-cari-ortu"
@@ -189,34 +212,52 @@
           </div>
 
           <div class="medan">
-            <label for="f-ayah">Ayah</label>
-            <select id="f-ayah" bind:value={pilihAyah}>
-              <option value="">(tidak diketahui)</option>
-              {#each opsiAyah as a (a.id)}
-                <option value={a.id}>{a.nama}</option>
-              {/each}
-            </select>
+            <span class="label-medan">Pilih untuk</span>
+            <div class="pilih-peran" role="group" aria-label="Pilih untuk">
+              <button
+                type="button"
+                class:aktif={peranOrtu === 'ayah'}
+                aria-pressed={peranOrtu === 'ayah'}
+                aria-label="Pilih untuk Ayah"
+                on:click={() => (peranOrtu = 'ayah')}
+              >Ayah</button>
+              <button
+                type="button"
+                class:aktif={peranOrtu === 'ibu'}
+                aria-pressed={peranOrtu === 'ibu'}
+                aria-label="Pilih untuk Ibu"
+                on:click={() => (peranOrtu = 'ibu')}
+              >Ibu</button>
+            </div>
           </div>
 
-          <div class="medan">
-            <label for="f-ibu">Ibu</label>
-            <select id="f-ibu" bind:value={pilihIbu}>
-              <option value="">(tidak diketahui)</option>
-              {#each opsiIbu as a (a.id)}
-                <option value={a.id}>{a.nama}</option>
+          {#if kandidatOrtu.length === 0}
+            <p class="info-pembaca">Tidak ada nama yang cocok.</p>
+          {:else}
+            <p class="info-pembaca">{kandidatOrtu.length} orang, urut A–Z.</p>
+            <ul class="pilih-hasil" aria-label="Hasil pencarian orang tua">
+              {#each kandidatOrtu as a (a.id)}
+                <li>
+                  <button
+                    type="button"
+                    class="pilih-baris"
+                    class:terpilih={pilihAyah === a.id || pilihIbu === a.id}
+                    aria-pressed={peranOrtu === 'ayah' ? pilihAyah === a.id : pilihIbu === a.id}
+                    aria-label={`Pilih ${a.nama}${a.kode ? ' ' + a.kode : ''} sebagai ${peranOrtu}`}
+                    on:click={() => pilihOrtu(peranOrtu, a.id)}
+                  >
+                    <span class="pilih-nama">{a.nama}</span>
+                    {#if a.kode}<span class="pilih-kode">{a.kode}</span>{/if}
+                    {#if pilihAyah === a.id}<span class="pilih-tanda">Ayah ✓</span>{/if}
+                    {#if pilihIbu === a.id}<span class="pilih-tanda">Ibu ✓</span>{/if}
+                  </button>
+                </li>
               {/each}
-            </select>
-            <p class="info-pembaca">
-              {#if kandidatOrtu.length === 0}
-                Tidak ada nama yang cocok.
-              {:else}
-                {kandidatOrtu.length} orang, urut A–Z.
-              {/if}
-            </p>
-          </div>
+            </ul>
+          {/if}
 
           <p class="info-pembaca">
-            Menyambungkan ke orang tua memindahkan {byId.get(form.targetId || '')?.nama || 'orang ini'} ke pohon orang tua tsb. Pilih (tidak diketahui) untuk melepaskan kembali.
+            Menyambungkan ke orang tua memindahkan {byId.get(form.targetId || '')?.nama || 'orang ini'} ke pohon orang tua tsb. Kosongkan pilihan untuk melepaskan kembali.
           </p>
         {:else if form.mode === 'pasang'}
           <div class="medan">
@@ -229,22 +270,47 @@
               bind:value={cariPasang}
             />
           </div>
+
           <div class="medan">
-            <label for="f-pasang">Pasangkan dengan:</label>
-            <select id="f-pasang" required bind:value={pilihPasang}>
-              <option value="">(pilih orang)</option>
-              {#each kandidatPasangTampil as a (a.id)}
-                <option value={a.id}>{a.nama}{#if a.kode}{' · '}{a.kode}{/if}</option>
-              {/each}
-            </select>
-            <p class="info-pembaca">
-              {#if kandidatPasangTampil.length === 0}
-                Tidak ada nama yang cocok.
-              {:else}
-                {kandidatPasangTampil.length} orang, urut A–Z.
-              {/if}
-            </p>
+            <span class="label-medan">Pasangan</span>
+            <div class="pilih-terpilih">
+              <div class="pilih-ringkas">
+                <strong>{pilihPasang ? byId.get(pilihPasang)?.nama || '?' : '(belum dipilih)'}</strong>
+                {#if pilihPasang}
+                  <button
+                    type="button"
+                    class="pilih-hapus"
+                    aria-label="Kosongkan pilihan pasangan"
+                    on:click={() => (pilihPasang = '')}
+                  >✕</button>
+                {/if}
+              </div>
+            </div>
           </div>
+
+          {#if kandidatPasangTampil.length === 0}
+            <p class="info-pembaca">Tidak ada nama yang cocok.</p>
+          {:else}
+            <p class="info-pembaca">{kandidatPasangTampil.length} orang, urut A–Z.</p>
+            <ul class="pilih-hasil" aria-label="Hasil pencarian pasangan">
+              {#each kandidatPasangTampil as a (a.id)}
+                <li>
+                  <button
+                    type="button"
+                    class="pilih-baris"
+                    class:terpilih={pilihPasang === a.id}
+                    aria-pressed={pilihPasang === a.id}
+                    aria-label={`Pilih ${a.nama}${a.kode ? ' ' + a.kode : ''} sebagai pasangan`}
+                    on:click={() => (pilihPasang = a.id)}
+                  >
+                    <span class="pilih-nama">{a.nama}</span>
+                    {#if a.kode}<span class="pilih-kode">{a.kode}</span>{/if}
+                    {#if pilihPasang === a.id}<span class="pilih-tanda">✓</span>{/if}
+                  </button>
+                </li>
+              {/each}
+            </ul>
+          {/if}
         {:else}
         <div class="medan">
           <label for="f-nama">Nama</label>
@@ -323,7 +389,7 @@
         {/if}
 
         <div class="tombol-form">
-          <button class="hijau" type="submit">Simpan</button>
+          <button class="hijau" type="submit" disabled={form.mode === 'pasang' && !pilihPasang}>Simpan</button>
           <button type="button" on:click={batal}>Batal</button>
         </div>
       </form>
