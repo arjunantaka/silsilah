@@ -409,6 +409,7 @@ test('semua balasan API ber-content-type JSON dengan charset', async () => {
     const tipe = res.headers.get('content-type') ?? ''
     expect(tipe).toContain('application/json')
     expect(tipe).toContain('charset=utf-8')
+    expect(res.headers.get('cache-control')).toBe('no-store')
     const body = await bacaJson(res)
     expect(body).toHaveProperty('ok')
   }

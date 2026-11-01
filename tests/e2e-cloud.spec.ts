@@ -198,45 +198,68 @@ test('membuka ?kode dengan perangkat kosong memuat dokumen dari cloud', async ({
   expect(await page.evaluate(() => localStorage.getItem('silsilah:kode'))).toBe('keluarga-budi-77')
 })
 
-test('konflik lokal/cloud: Batal pertahankan lokal, OK timpa dengan cloud', async ({ page }) => {
-  test.setTimeout(45000)
-  const lokal = dokumen('Keluarga Lokal', [orang('l1', 'Lokal Satu'), orang('l2', 'Lokal Dua')])
-  const cloud = dokumen('Keluarga Cloud', [orang('c1', 'Cloud Satu')])
-  const api = await mockApi(page, { dokumen: { 'keluarga-lokal-1': cloud }, simpanPut: false })
+test('cache lokal 49 vs cloud 180: banner memilih cloud tanpa PUT otomatis', async ({ page }) => {
+  test.setTimeout(30000)
+  const lokal = dokumen('Keluarga Lokal', [
+    orang('l1', 'Lokal Satu'),
+    orang('l2', 'Lokal Dua'),
+  ])
+  const cloud = dokumen('Keluarga Cloud', [
+    orang('c1', 'Cloud Satu'),
+    orang('c2', 'Cloud Dua'),
+    orang('c3', 'Cloud Tiga'),
+  ])
+  const api = await mockApi(page, { dokumen: { 'keluarga-lokal-1': cloud } })
 
-  // Jalur Batal: perangkat dipertahankan dan isinya didorong ke cloud.
-  const putPertama = page.waitForRequest(
-    (r) => r.method() === 'PUT' && new URL(r.url()).pathname === '/api/data',
-  )
-  page.once('dialog', (d) => d.dismiss())
-  await pasangDokumen(page, lokal, { kode: 'keluarga-lokal-1', url: '/?kode=keluarga-lokal-1' })
+  // Tanpa ?kode: kode tersimpan + cache lokal tidak boleh membuat aplikasi
+  // melewati perbandingan dengan cloud.
+  await pasangDokumen(page, lokal, { kode: 'keluarga-lokal-1' })
 
-  const dikirim = (await putPertama).postDataJSON() as {
-    kode: string
-    data: { nama_keluarga: string; anggota: { nama: string }[] }
-  }
-  expect(dikirim.kode).toBe('keluarga-lokal-1')
-  expect(dikirim.data.nama_keluarga).toBe('Keluarga Lokal')
-  expect(dikirim.data.anggota.map((a) => a.nama)).toEqual(['Lokal Satu', 'Lokal Dua'])
-
+  const banner = page.locator('.konflik-cloud')
+  await expect(banner).toBeVisible()
+  await expect(banner).toContainText('Cloud: 3 orang')
+  await expect(banner).toContainText('Perangkat: 2 orang')
+  await expect(page.locator('.status-sinkron')).toContainText('Menunggu pilihan data cloud')
   await expect(page.locator('.kotak')).toHaveCount(2)
-  await expect(page.locator('.nama-keluarga')).toContainText('Keluarga Lokal')
-  await expect(page.locator('.status-sinkron')).toContainText('Tersimpan otomatis')
-  expect((await bacaLokal(page)).nama_keluarga).toBe('Keluarga Lokal')
 
-  // Jalur OK: dokumen cloud menggantikan dokumen perangkat.
-  page.once('dialog', (d) => d.accept())
-  await page.reload()
+  // Autosave awal tidak boleh menimpa 180 dengan cache 49.
+  await page.waitForTimeout(3600)
+  expect(api.put).toHaveLength(0)
+  expect(cloud.anggota).toHaveLength(3)
 
-  await expect(page.locator('.kotak')).toHaveCount(1)
-  await expect(page.locator('.kotak').getByText('Cloud Satu', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: /Muat dari Cloud \(3\)/ }).click()
+  await expect(banner).toHaveCount(0)
+  await expect(page.locator('.kotak')).toHaveCount(3)
+  await expect(page.locator('.kotak').getByText('Cloud Tiga', { exact: true })).toBeVisible()
   await expect(page.locator('.nama-keluarga')).toContainText('Keluarga Cloud')
   await expect(page.locator('.status-cloud')).toContainText(
-    'Dimuat dari database cloud: keluarga-lokal-1 (1 orang)',
+    'Dimuat dari database cloud: keluarga-lokal-1 (3 orang)',
   )
-  await expect.poll(async () => (await bacaLokal(page)).nama_keluarga).toBe('Keluarga Cloud')
+  await expect(page).toHaveURL(/\?kode=keluarga-lokal-1$/)
   expect(await page.evaluate(() => localStorage.getItem('silsilah:kode'))).toBe('keluarga-lokal-1')
-  expect(api.put.length).toBeGreaterThanOrEqual(1)
+  expect((await bacaLokal(page)).nama_keluarga).toBe('Keluarga Cloud')
+})
+
+test('cache lokal dipertahankan tanpa menimpa cloud saat memilih perangkat', async ({ page }) => {
+  test.setTimeout(30000)
+  const lokal = dokumen('Keluarga Lokal', [orang('l1', 'Lokal Satu')])
+  const cloud = dokumen('Keluarga Cloud', [orang('c1', 'Cloud Satu'), orang('c2', 'Cloud Dua')])
+  const api = await mockApi(page, { dokumen: { 'keluarga-lokal-1': cloud } })
+
+  await pasangDokumen(page, lokal, { kode: 'keluarga-lokal-1' })
+  await expect(page.locator('.konflik-cloud')).toBeVisible()
+
+  await page.getByRole('button', { name: 'Pakai data perangkat' }).click()
+  await expect(page.locator('.konflik-cloud')).toHaveCount(0)
+  await expect(page.locator('.status-cloud')).toContainText('cloud tidak diubah')
+  await expect(page.locator('.kotak')).toHaveCount(1)
+  await page.waitForTimeout(3600)
+  expect(api.put).toHaveLength(0)
+  expect(await bacaLokal(page)).toMatchObject({ nama_keluarga: 'Keluarga Lokal' })
+
+  // Tombol Muat Cloud tetap tersedia untuk mencoba lagi.
+  await page.getByRole('button', { name: '🔄 Muat Cloud' }).click()
+  await expect(page.locator('.konflik-cloud')).toBeVisible()
 })
 
 test('dokumen identik tidak meminta konfirmasi dan melaporkan sudah sama', async ({ page }) => {

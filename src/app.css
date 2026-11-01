@@ -382,6 +382,18 @@ ul.anak > li::after {
   font-size: 14px;
 }
 
+/* Peringatan konflik: cloud dan cache perangkat berbeda. */
+.konflik-cloud {
+  margin: 10px;
+  padding: 12px;
+  background: #fff8e1;
+  border: 2px solid var(--bahaya);
+  border-radius: 12px;
+}
+.konflik-cloud p { margin: 0 0 10px; }
+.konflik-aksi { display: flex; flex-wrap: wrap; gap: 8px; }
+.konflik-aksi button { flex: 1 1 180px; }
+
 /* Baris status autosave: kode keluarga aktif + aksi salin tautan. */
 .status-sinkron {
   display: flex;
@@ -572,7 +584,7 @@ button.kecil {
   @page { size: A3 landscape; margin: 8mm; }
   body { background: #fff; color: #000; }
   .toolbar, .cari-bar, .lapis, .panel-bawah, .layar-kosong, .kontrol-zoom, .fokus-trah,
-  .status-sinkron, .status-cloud { display: none !important; }
+  .status-sinkron, .status-cloud, .konflik-cloud { display: none !important; }
   .cetak-kepala { display: block; margin: 0 0 6mm; }
   .cetak-kepala h1 { margin: 0; font-size: 22pt; color: #000; }
   .cetak-kepala p { margin: 2pt 0; font-size: 10pt; color: #333; }

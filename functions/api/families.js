@@ -7,7 +7,10 @@ export async function onRequestGet({ env }) {
   const json = (/** @type {unknown} */ b, /** @type {number} */ s) =>
     new Response(JSON.stringify(b), {
       status: s,
-      headers: { 'content-type': 'application/json; charset=utf-8' },
+      headers: {
+        'content-type': 'application/json; charset=utf-8',
+        'cache-control': 'no-store',
+      },
     })
   if (!env.SILSILAH_KV)
     return json({ ok: false, pesan: 'Database cloud belum dikonfigurasi (binding SILSILAH_KV hilang).' }, 503)

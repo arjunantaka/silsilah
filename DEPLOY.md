@@ -11,7 +11,10 @@ jadi KV lebih tepat daripada D1/SQL yang akan memaksa tabel relasional.
   dokumen keluarga dari KV dan menampilkannya di layar utama.
   - `?kode=<kode>` di alamat → selalu ambil dokumen itu dari database.
   - `?daftar=1` di alamat → buka Dashboard; refresh tetap di Dashboard.
-  - Kode tersimpan di perangkat → ambil otomatis bila perangkat masih kosong.
+  - Kode tersimpan di perangkat → dokumen cloud tetap dibandingkan dengan cache
+    perangkat saat halaman dibuka. Bila berbeda, pengguna memilih **Muat dari
+    Cloud** atau **Pakai data perangkat**; cache lama tidak otomatis menimpa
+    cloud. Tombol **🔄 Muat Cloud** tersedia untuk menyegarkan manual.
   - Data lokal tidak pernah ditimpa diam-diam: bila perangkat sudah berisi data,
     penimpaan selalu dikonfirmasi lebih dulu. Bila gagal (offline/kode salah),
     aplikasi tetap memakai data lokal dan menampilkan pesan status.

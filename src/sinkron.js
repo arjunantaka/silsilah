@@ -7,7 +7,7 @@ import { simpanKeCloud, buatKodeBaru } from './cloud.js'
 const JEDA_MS = 3000
 const KEY_KODE = 'silsilah:kode'
 
-/** @type {import('svelte/store').Writable<'idle'|'menyimpan'|'tersimpan'|'gagal'>} */
+/** @type {import('svelte/store').Writable<'idle'|'menyimpan'|'tersimpan'|'gagal'|'ditahan'>} */
 export const statusSinkron = writable('idle')
 /** @type {import('svelte/store').Writable<string>} */
 export const kodeKeluarga = writable(localStorage.getItem(KEY_KODE) || '')
@@ -18,6 +18,24 @@ let timer = null
 let antre = null
 // Ada perubahan baru yang belum masuk ke permintaan PUT mana pun.
 let perlu = false
+// Konflik cloud vs cache belum diputuskan: jangan tulis apa pun ke cloud.
+let ditahan = false
+
+/**
+ * Tahan/lepas autosave. Dipakai saat cloud dan cache perangkat berbeda supaya
+ * cache lama tidak menimpa database sebelum pengguna memilih.
+ * @param {boolean} nilai
+ */
+export function tahanSinkron(nilai) {
+  ditahan = nilai
+  if (nilai) {
+    clearTimeout(timer)
+    timer = null
+    statusSinkron.set('ditahan')
+  } else if (get(statusSinkron) === 'ditahan') {
+    statusSinkron.set('idle')
+  }
+}
 
 /** @param {string} kode */
 function setKode(kode) {
@@ -46,6 +64,10 @@ export function lepasKode() {
  * perubahan baru.
  */
 export function simpanSekarang() {
+  if (ditahan) {
+    statusSinkron.set('ditahan')
+    return Promise.resolve()
+  }
   perlu = true
   if (antre) return antre
 
@@ -80,16 +102,27 @@ export function simpanSekarang() {
 }
 
 function jadwal() {
+  if (ditahan) return
   clearTimeout(timer)
   timer = setTimeout(() => simpanSekarang(), JEDA_MS)
 }
 
 /**
- * Mulai sinkron otomatis; kembalikan unsubscribe. Subscribe langsung menembakkan
- * nilai sekarang, jadi perangkat dengan data lokal lama ikut terdorong 3 detik setelah dibuka.
+ * Mulai sinkron otomatis; kembalikan unsubscribe.
+ *
+ * Emisi pertama dari subscribe bukan perubahan pengguna: itu dokumen lama dari
+ * localStorage. Jangan langsung mendorongnya ke cloud karena bisa menimpa
+ * dokumen yang lebih baru (mis. cache 49 orang vs database 180 orang).
+ * Dokumen tanpa kode tetap didorong agar keluarga lama mendapat kode baru.
  */
 export function mulaiSinkron() {
+  let pertama = true
   const berhenti = data.subscribe((d) => {
+    if (pertama) {
+      pertama = false
+      if (!get(kodeKeluarga) && d.anggota.length > 0) jadwal()
+      return
+    }
     if (d.anggota.length > 0) jadwal()
   })
   // Coba lagi otomatis setelah koneksi kembali, tanpa menunggu edit berikutnya.

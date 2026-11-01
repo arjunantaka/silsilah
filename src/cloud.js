@@ -11,6 +11,7 @@ export async function simpanKeCloud(kode) {
     method: 'PUT',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ kode, data: get(data) }),
+    cache: 'no-store',
   })
   const hasil = await res.json().catch(() => null)
   if (!res.ok || !hasil?.ok) throw new Error(hasil?.pesan || 'Cloud tidak tersedia.')
@@ -19,7 +20,7 @@ export async function simpanKeCloud(kode) {
 
 /** @param {string} kode @returns {Promise<any>} */
 export async function ambilDariCloud(kode) {
-  const res = await fetch(`/api/data?kode=${encodeURIComponent(kode)}`)
+  const res = await fetch(`/api/data?kode=${encodeURIComponent(kode)}`, { cache: 'no-store' })
   const hasil = await res.json().catch(() => null)
   if (!res.ok || !hasil?.ok) throw new Error(hasil?.pesan || 'Cloud tidak tersedia.')
   return hasil.data
@@ -35,7 +36,7 @@ function akhiran(n) {
 /** @param {string} kode @returns {Promise<boolean>} */
 async function kodeTersedia(kode) {
   try {
-    const res = await fetch(`/api/data?kode=${encodeURIComponent(kode)}`)
+    const res = await fetch(`/api/data?kode=${encodeURIComponent(kode)}`, { cache: 'no-store' })
     return res.status === 404
   } catch {
     return true // cloud tak terjangkau: pakai saja; kegagalan ditangani saat simpan
@@ -59,6 +60,7 @@ export async function buatKodeBaru() {
 export async function hapusDariCloud(kode) {
   const res = await fetch(`/api/data?kode=${encodeURIComponent(kode)}&konfirmasi=ya`, {
     method: 'DELETE',
+    cache: 'no-store',
   })
   const hasil = await res.json().catch(() => null)
   if (!res.ok || !hasil?.ok) throw new Error(hasil?.pesan || 'Gagal menghapus dari cloud.')
@@ -69,7 +71,7 @@ export async function hapusDariCloud(kode) {
  * @returns {Promise<{ kode: string, nama: string|null, jumlah: number|null }[]>}
  */
 export async function ambilDaftarKeluarga() {
-  const res = await fetch('/api/families')
+  const res = await fetch('/api/families', { cache: 'no-store' })
   const hasil = await res.json().catch(() => null)
   if (!res.ok || !hasil?.ok || !Array.isArray(hasil.data)) throw new Error(hasil?.pesan || 'Cloud tidak tersedia.')
   return hasil.data

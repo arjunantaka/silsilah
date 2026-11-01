@@ -2,7 +2,7 @@
   import { data, ui, gantiNamaKeluarga, hapusSemua, muatJSON } from './store.js'
   import { unduhCSV } from './export.js'
   import { ambilDariCloud, ambilDaftarKeluarga, hapusDariCloud, POLA_KODE } from './cloud.js'
-  import { statusSinkron, kodeKeluarga, mulaiSinkron, simpanSekarang, lepasKode } from './sinkron.js'
+  import { statusSinkron, kodeKeluarga, mulaiSinkron, simpanSekarang, lepasKode, tahanSinkron } from './sinkron.js'
   import { trahDari } from './trah.js'
   import { bandingKode } from './urut.js'
   import TreeView from './TreeView.svelte'
@@ -153,6 +153,8 @@
     }
     hapusSemua()
     lepasKode()
+    konflikCloud = null
+    tahanSinkron(false)
     statusCloud = ''
     history.replaceState({}, '', '/')
     ui.update((u) => ({ ...u, tampilDaftar: false, trahId: null, fokusId: null }))
@@ -169,11 +171,52 @@
 
   // ---------- Dashboard berbasis database ----------
   // Sumber data utama tetap cloud KV (/api/data). Saat halaman dibuka:
-  // - ?kode=... di alamat  -> ambil dokumen itu dari database bila berbeda
-  // - kode tersimpan di perangkat -> ambil dari database bila perangkat masih kosong
-  // Data lokal tidak pernah ditimpa diam-diam (selalu dikonfirmasi), tetapi
-  // dokumen yang isinya sama persis tidak perlu konfirmasi lagi.
+  // - ?kode=... di alamat  -> bandingkan dengan dokumen itu
+  // - kode tersimpan di perangkat -> tetap bandingkan dengan cloud, walau
+  //   perangkat sudah berisi data; localStorage adalah cache, bukan sumber final.
+  // Perbedaan tidak pernah ditimpa diam-diam: tampilkan pilihan Muat Cloud atau
+  // Pakai data perangkat.
   let statusCloud = ''
+  /** @type {{ kode: string, cloud: import('./store.js').DataKeluarga } | null} */
+  let konflikCloud = null
+
+  /** @param {string} kode */
+  function gunakanKode(kode) {
+    localStorage.setItem('silsilah:kode', kode)
+    kodeKeluarga.set(kode)
+  }
+
+  /**
+   * @param {string} kode
+   * @param {import('./store.js').DataKeluarga} obj
+   */
+  function selesaiMuatCloud(kode, obj) {
+    gunakanKode(kode)
+    konflikCloud = null
+    tahanSinkron(false)
+    if (!get(ui).tampilDaftar) {
+      history.replaceState({}, '', '/?kode=' + encodeURIComponent(kode))
+    }
+    ui.update((u) => ({ ...u, trahId: null, fokusId: null }))
+    statusCloud = 'Dimuat dari database cloud: ' + kode + ' (' + obj.anggota.length + ' orang).'
+    setTimeout(() => {
+      if (statusCloud.startsWith('Dimuat')) statusCloud = ''
+    }, 8000)
+  }
+
+  /** @param {any} nilai @returns {any} */
+  function stabil(nilai) {
+    if (Array.isArray(nilai)) return nilai.map(stabil)
+    if (nilai && typeof nilai === 'object') {
+      return Object.fromEntries(
+        Object.keys(nilai)
+          .sort()
+          .map((k) => [k, stabil(nilai[k])]),
+      )
+    }
+    return nilai
+  }
+
   async function muatDariDatabase() {
     const dariUrl = new URLSearchParams(location.search).get('kode')
     const kodeTersimpan = localStorage.getItem('silsilah:kode') || ''
@@ -181,38 +224,68 @@
     if (!POLA_KODE.test(kode)) return
     const lokal = get(data)
     const lokalKosong = lokal.anggota.length === 0
-    if (!dariUrl && !lokalKosong) return
     statusCloud = 'Memuat dari database cloud: ' + kode + '…'
     try {
       const obj = await ambilDariCloud(kode)
-      const sama = JSON.stringify(obj) === JSON.stringify(lokal)
-      if (!lokalKosong && !sama) {
-        const samaKode = kode === kodeTersimpan.trim().toLowerCase()
-        const pesan = samaKode
-          ? 'Data cloud berbeda dari data di perangkat ini. Muat dari cloud?\n\nBatal = pertahankan data perangkat dan simpan ke cloud.'
-          : 'Timpa data di perangkat ini dengan data cloud kode ' + kode + '?'
-        if (!confirm(pesan)) {
-          if (samaKode) simpanSekarang()
-          return
-        }
+      const sama = JSON.stringify(stabil(obj)) === JSON.stringify(stabil(lokal))
+      if (sama) {
+        gunakanKode(kode)
+        konflikCloud = null
+        tahanSinkron(false)
+        statusCloud = 'Dokumen di cloud dan perangkat sudah sama: ' + kode + '.'
+        setTimeout(() => {
+          if (statusCloud.startsWith('Dokumen di cloud')) statusCloud = ''
+        }, 8000)
+        return
       }
-      if (!sama && !muatJSON(obj)) {
+      if (!lokalKosong) {
+        // Jangan sentuh cloud dulu. Pengguna memilih secara eksplisit; ini
+        // mencegah cache lama (mis. 49 orang) menimpa database yang lebih baru.
+        tahanSinkron(true)
+        konflikCloud = { kode, cloud: obj }
+        statusCloud =
+          'Data cloud berbeda dari perangkat: cloud ' +
+          obj.anggota.length +
+          ' orang, perangkat ' +
+          lokal.anggota.length +
+          ' orang.'
+        return
+      }
+      if (!muatJSON(obj)) {
         statusCloud = 'Database cloud tidak berisi dokumen silsilah.'
         return
       }
-      localStorage.setItem('silsilah:kode', kode)
-      kodeKeluarga.set(kode)
-      if (!sama) ui.update((u) => ({ ...u, trahId: null, fokusId: null }))
-      statusCloud = sama
-        ? 'Dokumen di cloud dan perangkat sudah sama: ' + kode + '.'
-        : 'Dimuat dari database cloud: ' + kode + ' (' + obj.anggota.length + ' orang).'
-      setTimeout(() => {
-        if (statusCloud.startsWith('Dokumen di cloud')) statusCloud = ''
-        else if (statusCloud.startsWith('Dimuat')) statusCloud = ''
-      }, 8000)
+      selesaiMuatCloud(kode, obj)
     } catch (e) {
+      tahanSinkron(false)
       statusCloud = 'Gagal memuat dari database cloud: ' + /** @type {Error} */ (e).message
     }
+  }
+
+  function muatKonflikDariCloud() {
+    const c = konflikCloud
+    if (!c) return
+    if (!muatJSON(c.cloud)) {
+      statusCloud = 'Database cloud tidak berisi dokumen silsilah.'
+      return
+    }
+    selesaiMuatCloud(c.kode, c.cloud)
+  }
+
+  function pakaiDataLokal() {
+    if (!konflikCloud) return
+    konflikCloud = null
+    tahanSinkron(false)
+    statusCloud =
+      'Memakai data di perangkat; cloud tidak diubah. Tekan Muat Cloud untuk menyegarkan dari database.'
+    setTimeout(() => {
+      if (statusCloud.startsWith('Memakai data')) statusCloud = ''
+    }, 10000)
+  }
+
+  async function muatUlangCloud() {
+    konflikCloud = null
+    await muatDariDatabase()
   }
 
   // Daftar keluarga di database (tampil di layar kosong / dashboard).
@@ -301,6 +374,8 @@
         statusCloud = 'Database cloud tidak berisi dokumen silsilah.'
         return
       }
+      konflikCloud = null
+      tahanSinkron(false)
       localStorage.setItem('silsilah:kode', kode)
       kodeKeluarga.set(kode)
       history.replaceState({}, '', '/?kode=' + encodeURIComponent(kode))
@@ -346,6 +421,8 @@
       if (f.kode === get(kodeKeluarga)) {
         hapusSemua()
         lepasKode()
+        konflikCloud = null
+        tahanSinkron(false)
         statusCloud = ''
         history.replaceState({}, '', '/?daftar=1')
         ui.update((u) => ({
@@ -408,17 +485,34 @@
   <p class="status-cloud" role="status">{statusCloud}</p>
 {/if}
 
+{#if konflikCloud}
+  <section class="konflik-cloud" role="alert">
+    <p>
+      <strong>Data cloud berbeda dari perangkat.</strong>
+      Cloud: {konflikCloud.cloud.anggota.length} orang · Perangkat: {$data.anggota.length} orang.
+    </p>
+    <div class="konflik-aksi">
+      <button class="hijau" on:click={muatKonflikDariCloud}>
+        Muat dari Cloud ({konflikCloud.cloud.anggota.length})
+      </button>
+      <button on:click={pakaiDataLokal}>Pakai data perangkat</button>
+    </div>
+  </section>
+{/if}
+
 {#if !$ui.tampilDaftar && $data.anggota.length > 0 && $kodeKeluarga}
   <p class="status-sinkron" role="status">
     <span>
       {#if $statusSinkron === 'menyimpan'}☁️ Menyimpan ke database…
       {:else if $statusSinkron === 'gagal'}⚠️ Gagal simpan ke cloud.
+      {:else if $statusSinkron === 'ditahan'}⏸️ Menunggu pilihan data cloud.
       {:else}☁️ Tersimpan otomatis ke database.{/if}
     </span>
     <code class="kode-sinkron">{$kodeKeluarga}</code>
     {#if $statusSinkron === 'gagal'}
       <button class="kecil" on:click={simpanSekarang}>Coba lagi</button>
     {/if}
+    <button class="kecil" on:click={muatUlangCloud}>🔄 Muat Cloud</button>
     <button class="kecil" on:click={salinTautan}>🔗 Salin Tautan</button>
   </p>
 {/if}

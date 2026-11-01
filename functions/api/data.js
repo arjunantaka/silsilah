@@ -8,7 +8,10 @@ const MAKS_KARAKTER = 1_000_000
 function balas(body, status) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { 'content-type': 'application/json; charset=utf-8' },
+    headers: {
+      'content-type': 'application/json; charset=utf-8',
+      'cache-control': 'no-store',
+    },
   })
 }
 const sukses = (data) => balas({ ok: true, data }, 200)
