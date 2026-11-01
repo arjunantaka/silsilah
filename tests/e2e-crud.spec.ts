@@ -336,6 +336,64 @@ test('Jadikan Anak menyambung ke orang tua lalu melepasnya kembali tanpa duplika
   expect(tono.ibu).toBe(null)
 })
 
+test('Jadikan Anak: pencarian orang tua menyaring dua dropdown dan menjaga pilihan', async ({
+  page,
+}) => {
+  await siapkanApi(page)
+  await pasangSekali(
+    page,
+    dokumen('Cari Ortu', [
+      orang('ayah', 'Ayah Satu', { kode: 'K01' }),
+      orang('ibu', 'Ibu Dua', { kode: 'K02', gender: 'P' }),
+      orang('lain', 'Lain Tiga', { kode: 'K03' }),
+      orang('tono', 'Tono', { kode: 'B01' }),
+    ]),
+  )
+  await bukaOrang(page, 'Tono')
+  await page.getByRole('button', { name: /Jadikan Anak/ }).click()
+  const form = formPanel(page)
+  const cari = page.locator('#f-cari-ortu')
+
+  await expect(cari).toBeVisible()
+  await expect(page.locator('#f-ayah option')).toHaveText([
+    '(tidak diketahui)',
+    'Ayah Satu',
+    'Ibu Dua',
+    'Lain Tiga',
+  ])
+  await expect(form).toContainText('3 orang, urut A–Z.')
+
+  // Cari lewat kode: kedua dropdown sama-sama tersaring.
+  await cari.fill('k02')
+  await expect(page.locator('#f-ayah option')).toHaveText(['(tidak diketahui)', 'Ibu Dua'])
+  await expect(page.locator('#f-ibu option')).toHaveText(['(tidak diketahui)', 'Ibu Dua'])
+  await page.locator('#f-ibu').selectOption({ label: 'Ibu Dua' })
+
+  // Mengetik nama ayah tidak menghapus pilihan ibu yang tidak cocok.
+  await cari.fill('ayah')
+  await expect(page.locator('#f-ayah option')).toHaveText(['(tidak diketahui)', 'Ayah Satu'])
+  await expect(page.locator('#f-ibu option')).toHaveText([
+    '(tidak diketahui)',
+    'Ayah Satu',
+    'Ibu Dua',
+  ])
+  await expect(page.locator('#f-ibu')).toHaveValue('ibu')
+  await page.locator('#f-ayah').selectOption({ label: 'Ayah Satu' })
+
+  // Pencarian tanpa hasil tetap mempertahankan kedua pilihan.
+  await cari.fill('tidak-ada')
+  await expect(form).toContainText('Tidak ada nama yang cocok.')
+  await expect(page.locator('#f-ayah option')).toHaveText(['(tidak diketahui)', 'Ayah Satu'])
+  await expect(page.locator('#f-ibu option')).toHaveText(['(tidak diketahui)', 'Ibu Dua'])
+  await form.getByRole('button', { name: 'Simpan' }).click()
+
+  await expect(panelData(page)).toContainText('Orang tua: Ayah Satu & Ibu Dua')
+  const d = await bacaDokumen(page)
+  const tono = d.anggota.find((a: { id: string }) => a.id === 'tono')
+  expect(tono.ayah).toBe('ayah')
+  expect(tono.ibu).toBe('ibu')
+})
+
 test('hapus pasangan berstatus pisah membersihkan pointer tanpa menghapus anak', async ({
   page,
 }) => {
