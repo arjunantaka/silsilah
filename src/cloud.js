@@ -5,25 +5,45 @@ import { slugNama } from './export.js'
 
 export const POLA_KODE = /^[a-z0-9-]{4,64}$/
 
-/** @param {string} kode @returns {Promise<string>} */
-export async function simpanKeCloud(kode) {
+/**
+ * @param {string} kode
+ * @param {number} revisi
+ * @returns {Promise<{ kode: string, revisi: number }>}
+ */
+export async function simpanKeCloud(kode, revisi) {
   const res = await fetch('/api/data', {
     method: 'PUT',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ kode, data: get(data) }),
+    body: JSON.stringify({ kode, data: get(data), revisi }),
     cache: 'no-store',
   })
   const hasil = await res.json().catch(() => null)
-  if (!res.ok || !hasil?.ok) throw new Error(hasil?.pesan || 'Cloud tidak tersedia.')
-  return /** @type {string} */ (hasil.data)
+  if (!res.ok || !hasil?.ok) {
+    const err = /** @type {Error & { status?: number, revisi?: number }} */ (
+      new Error(hasil?.pesan || 'Cloud tidak tersedia.')
+    )
+    err.status = res.status
+    if (Number.isInteger(hasil?.revisi)) err.revisi = hasil.revisi
+    throw err
+  }
+  return {
+    kode: /** @type {string} */ (hasil.data),
+    revisi: Number.isInteger(hasil.revisi) ? hasil.revisi : revisi + 1,
+  }
 }
 
-/** @param {string} kode @returns {Promise<any>} */
+/**
+ * @param {string} kode
+ * @returns {Promise<{ data: any, revisi: number }>}
+ */
 export async function ambilDariCloud(kode) {
   const res = await fetch(`/api/data?kode=${encodeURIComponent(kode)}`, { cache: 'no-store' })
   const hasil = await res.json().catch(() => null)
   if (!res.ok || !hasil?.ok) throw new Error(hasil?.pesan || 'Cloud tidak tersedia.')
-  return hasil.data
+  return {
+    data: hasil.data,
+    revisi: Number.isInteger(hasil.revisi) ? hasil.revisi : 0,
+  }
 }
 
 const HURUF_AKHIRAN = 'abcdefghijkmnpqrstuvwxyz23456789' // tanpa karakter membingungkan (0/o/1/l/i)
@@ -56,19 +76,30 @@ export async function buatKodeBaru() {
   return `${dasar}-${akhiran(14)}` // praktis mustahil tabrakan
 }
 
-/** @param {string} kode @returns {Promise<void>} */
-export async function hapusDariCloud(kode) {
-  const res = await fetch(`/api/data?kode=${encodeURIComponent(kode)}&konfirmasi=ya`, {
-    method: 'DELETE',
-    cache: 'no-store',
-  })
+/**
+ * @param {string} kode
+ * @param {number} revisi
+ * @returns {Promise<void>}
+ */
+export async function hapusDariCloud(kode, revisi) {
+  const res = await fetch(
+    `/api/data?kode=${encodeURIComponent(kode)}&konfirmasi=ya&revisi=${revisi}`,
+    { method: 'DELETE', cache: 'no-store' },
+  )
   const hasil = await res.json().catch(() => null)
-  if (!res.ok || !hasil?.ok) throw new Error(hasil?.pesan || 'Gagal menghapus dari cloud.')
+  if (!res.ok || !hasil?.ok) {
+    const err = /** @type {Error & { status?: number, revisi?: number }} */ (
+      new Error(hasil?.pesan || 'Gagal menghapus dari cloud.')
+    )
+    err.status = res.status
+    if (Number.isInteger(hasil?.revisi)) err.revisi = hasil.revisi
+    throw err
+  }
 }
 
 /**
  * Daftar keluarga di database.
- * @returns {Promise<{ kode: string, nama: string|null, jumlah: number|null }[]>}
+ * @returns {Promise<{ kode: string, nama: string|null, jumlah: number|null, revisi: number }[]>}
  */
 export async function ambilDaftarKeluarga() {
   const res = await fetch('/api/families', { cache: 'no-store' })

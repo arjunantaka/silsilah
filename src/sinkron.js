@@ -6,11 +6,26 @@ import { simpanKeCloud, buatKodeBaru } from './cloud.js'
 
 const JEDA_MS = 3000
 const KEY_KODE = 'silsilah:kode'
+const KEY_REVISI = 'silsilah:revisi'
 
-/** @type {import('svelte/store').Writable<'idle'|'menyimpan'|'tersimpan'|'gagal'|'ditahan'>} */
+/** @type {import('svelte/store').Writable<'idle'|'menyimpan'|'tersimpan'|'gagal'|'ditahan'|'konflik'|'lokal'>} */
 export const statusSinkron = writable('idle')
 /** @type {import('svelte/store').Writable<string>} */
 export const kodeKeluarga = writable(localStorage.getItem(KEY_KODE) || '')
+/** Revisi dokumen cloud yang terakhir dimuat/disimpan. */
+export const revisiKeluarga = writable(Number(localStorage.getItem(KEY_REVISI)) || 0)
+
+/**
+ * Simpan revisi dokumen aktif agar PUT berikutnya memakai versi yang benar.
+ * @param {number} revisi
+ */
+export function setRevisi(revisi) {
+  const n = Number.isInteger(revisi) && revisi >= 0 ? revisi : 0
+  revisiKeluarga.set(n)
+  try {
+    localStorage.setItem(KEY_REVISI, String(n))
+  } catch {}
+}
 
 /** @type {any} */
 let timer = null
@@ -32,7 +47,7 @@ export function tahanSinkron(nilai) {
     clearTimeout(timer)
     timer = null
     statusSinkron.set('ditahan')
-  } else if (get(statusSinkron) === 'ditahan') {
+  } else if (['ditahan', 'lokal', 'konflik'].includes(get(statusSinkron))) {
     statusSinkron.set('idle')
   }
 }
@@ -49,6 +64,7 @@ function setKode(kode) {
 // (dipakai saat membuka file JSON dan Silsilah Baru - jangan menimpa keluarga lama).
 export function lepasKode() {
   kodeKeluarga.set('')
+  setRevisi(0)
   try {
     localStorage.removeItem(KEY_KODE)
   } catch {}
@@ -64,10 +80,7 @@ export function lepasKode() {
  * perubahan baru.
  */
 export function simpanSekarang() {
-  if (ditahan) {
-    statusSinkron.set('ditahan')
-    return Promise.resolve()
-  }
+  if (ditahan) return Promise.resolve()
   perlu = true
   if (antre) return antre
 
@@ -83,13 +96,24 @@ export function simpanSekarang() {
         if (!kode) {
           kode = await buatKodeBaru()
           setKode(kode)
+          setRevisi(0)
         }
-        await simpanKeCloud(kode)
+        const hasil = await simpanKeCloud(kode, get(revisiKeluarga))
+        setRevisi(hasil.revisi)
         statusSinkron.set('tersimpan')
       }
-    } catch {
+    } catch (e) {
       berhasil = false
-      statusSinkron.set('gagal')
+      if (/** @type {any} */ (e)?.status === 409) {
+        // Cloud sudah berubah (tab/perangkat lain). Berhenti menulis dan
+        // tampilkan tombol Muat Cloud; jangan pernah retry dengan paksa.
+        ditahan = true
+        clearTimeout(timer)
+        timer = null
+        statusSinkron.set('konflik')
+      } else {
+        statusSinkron.set('gagal')
+      }
     } finally {
       antre = null
     }

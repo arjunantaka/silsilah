@@ -13,8 +13,11 @@ jadi KV lebih tepat daripada D1/SQL yang akan memaksa tabel relasional.
   - `?daftar=1` di alamat → buka Dashboard; refresh tetap di Dashboard.
   - Kode tersimpan di perangkat → dokumen cloud tetap dibandingkan dengan cache
     perangkat saat halaman dibuka. Bila berbeda, pengguna memilih **Muat dari
-    Cloud** atau **Pakai data perangkat**; cache lama tidak otomatis menimpa
-    cloud. Tombol **🔄 Muat Cloud** tersedia untuk menyegarkan manual.
+    Cloud** atau **Lihat data perangkat** (tanpa simpan); cache lama tidak otomatis
+    menimpa cloud. Tombol **🔄 Muat Cloud** tersedia untuk menyegarkan manual.
+  - Setiap dokumen punya **revisi**. PUT/DELETE dengan revisi lama ditolak
+    `409`, sehingga tab/perangkat lama tidak bisa menimpa dokumen baru.
+    Versi sebelumnya disimpan sebagai `__backup__:<kode>`.
   - Data lokal tidak pernah ditimpa diam-diam: bila perangkat sudah berisi data,
     penimpaan selalu dikonfirmasi lebih dulu. Bila gagal (offline/kode salah),
     aplikasi tetap memakai data lokal dan menampilkan pesan status.
@@ -110,15 +113,17 @@ KV lokal disimulasikan wrangler: tidak perlu akun untuk uji coba.
 
 ## API
 
-- `GET /api/data?kode=<kode>` → `{ ok: true, data: <dokumen> }` atau
+- `GET /api/data?kode=<kode>` → `{ ok: true, data: <dokumen>, revisi: N }` atau
   `{ ok: false, pesan }` (404 bila kode belum ada).
 - `GET /api/families` → `{ ok: true, data: [{ kode, nama, jumlah }] }` — daftar
   keluarga dari metadata KV (maks 100 kunci; `nama`/`jumlah` null untuk dokumen
   lama yang belum pernah ditulis ulang). **Publik, tanpa autentikasi.**
-- `PUT /api/data` body `{ kode, data }` → `{ ok: true }`; sekaligus menulis
-  metadata `{ nama, jumlah }` yang dipakai `GET /api/families`.
-- `DELETE /api/data?kode=<kode>&konfirmasi=ya` → menghapus dokumen dari KV.
-  Tanpa `konfirmasi=ya` ditolak `400`; kode yang tidak ada `404`. **Permanen.**
+- `PUT /api/data` body `{ kode, data, revisi }` → `{ ok: true, data: kode, revisi: N+1 }`.
+  Revisi wajib; revisi lama ditolak `409`. Metadata `{ nama, jumlah, revisi, diubah }`
+  dipakai `GET /api/families`, dan versi sebelumnya disimpan sebagai backup.
+- `DELETE /api/data?kode=<kode>&konfirmasi=ya&revisi=N` → menghapus dokumen dari KV.
+  Tanpa `konfirmasi=ya`/`revisi` ditolak `400`; revisi lama `409`; kode yang tidak ada `404`.
+  Backup versi terakhir tetap disimpan. **Permanen.**
 - Kode dinormalisasi huruf kecil; validasi bentuk dokumen sama seperti
   dokumen aplikasi (`nama_keluarga` string, `anggota` array), maks ±1 MB.
   `PUT` dan `DELETE` tidak memakai autentikasi tambahan; lindungi dengan

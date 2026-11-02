@@ -249,7 +249,7 @@ test('cache lokal dipertahankan tanpa menimpa cloud saat memilih perangkat', asy
   await pasangDokumen(page, lokal, { kode: 'keluarga-lokal-1' })
   await expect(page.locator('.konflik-cloud')).toBeVisible()
 
-  await page.getByRole('button', { name: 'Pakai data perangkat' }).click()
+  await page.getByRole('button', { name: 'Lihat data perangkat' }).click()
   await expect(page.locator('.konflik-cloud')).toHaveCount(0)
   await expect(page.locator('.status-cloud')).toContainText('cloud tidak diubah')
   await expect(page.locator('.kotak')).toHaveCount(1)

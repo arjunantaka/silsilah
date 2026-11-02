@@ -2,7 +2,7 @@
   import { data, ui, gantiNamaKeluarga, hapusSemua, muatJSON } from './store.js'
   import { unduhCSV } from './export.js'
   import { ambilDariCloud, ambilDaftarKeluarga, hapusDariCloud, POLA_KODE } from './cloud.js'
-  import { statusSinkron, kodeKeluarga, mulaiSinkron, simpanSekarang, lepasKode, tahanSinkron } from './sinkron.js'
+  import { statusSinkron, kodeKeluarga, revisiKeluarga, mulaiSinkron, simpanSekarang, lepasKode, tahanSinkron, setRevisi } from './sinkron.js'
   import { trahDari } from './trah.js'
   import { bandingKode } from './urut.js'
   import TreeView from './TreeView.svelte'
@@ -177,7 +177,7 @@
   // Perbedaan tidak pernah ditimpa diam-diam: tampilkan pilihan Muat Cloud atau
   // Pakai data perangkat.
   let statusCloud = ''
-  /** @type {{ kode: string, cloud: import('./store.js').DataKeluarga } | null} */
+  /** @type {{ kode: string, cloud: import('./store.js').DataKeluarga, revisi: number } | null} */
   let konflikCloud = null
 
   /** @param {string} kode */
@@ -189,9 +189,11 @@
   /**
    * @param {string} kode
    * @param {import('./store.js').DataKeluarga} obj
+   * @param {number} revisi
    */
-  function selesaiMuatCloud(kode, obj) {
+  function selesaiMuatCloud(kode, obj, revisi) {
     gunakanKode(kode)
+    setRevisi(revisi)
     konflikCloud = null
     tahanSinkron(false)
     if (!get(ui).tampilDaftar) {
@@ -226,10 +228,13 @@
     const lokalKosong = lokal.anggota.length === 0
     statusCloud = 'Memuat dari database cloud: ' + kode + '…'
     try {
-      const obj = await ambilDariCloud(kode)
+      const hasil = await ambilDariCloud(kode)
+      const obj = hasil.data
+      const revisi = hasil.revisi
       const sama = JSON.stringify(stabil(obj)) === JSON.stringify(stabil(lokal))
       if (sama) {
         gunakanKode(kode)
+        setRevisi(revisi)
         konflikCloud = null
         tahanSinkron(false)
         statusCloud = 'Dokumen di cloud dan perangkat sudah sama: ' + kode + '.'
@@ -242,7 +247,7 @@
         // Jangan sentuh cloud dulu. Pengguna memilih secara eksplisit; ini
         // mencegah cache lama (mis. 49 orang) menimpa database yang lebih baru.
         tahanSinkron(true)
-        konflikCloud = { kode, cloud: obj }
+        konflikCloud = { kode, cloud: obj, revisi }
         statusCloud =
           'Data cloud berbeda dari perangkat: cloud ' +
           obj.anggota.length +
@@ -255,7 +260,7 @@
         statusCloud = 'Database cloud tidak berisi dokumen silsilah.'
         return
       }
-      selesaiMuatCloud(kode, obj)
+      selesaiMuatCloud(kode, obj, revisi)
     } catch (e) {
       tahanSinkron(false)
       statusCloud = 'Gagal memuat dari database cloud: ' + /** @type {Error} */ (e).message
@@ -269,17 +274,20 @@
       statusCloud = 'Database cloud tidak berisi dokumen silsilah.'
       return
     }
-    selesaiMuatCloud(c.kode, c.cloud)
+    selesaiMuatCloud(c.kode, c.cloud, c.revisi)
   }
 
   function pakaiDataLokal() {
     if (!konflikCloud) return
     konflikCloud = null
-    tahanSinkron(false)
+    // Tetap ditahan: data perangkat hanya untuk dilihat. Tanpa ini, edit
+    // berikutnya bisa mengirim seluruh cache lama ke cloud.
+    tahanSinkron(true)
+    statusSinkron.set('lokal')
     statusCloud =
-      'Memakai data di perangkat; cloud tidak diubah. Tekan Muat Cloud untuk menyegarkan dari database.'
+      'Menampilkan data perangkat; cloud tidak diubah dan perubahan tidak disimpan. Tekan Muat Cloud untuk memakai database.'
     setTimeout(() => {
-      if (statusCloud.startsWith('Memakai data')) statusCloud = ''
+      if (statusCloud.startsWith('Menampilkan data')) statusCloud = ''
     }, 10000)
   }
 
@@ -289,20 +297,25 @@
   }
 
   // Daftar keluarga di database (tampil di layar kosong / dashboard).
-  /** @type {{ kode: string, nama: string|null, jumlah: number|null }[]} */
+  /** @type {{ kode: string, nama: string|null, jumlah: number|null, revisi?: number }[]} */
   let daftarKeluarga = []
   let memuatDaftar = false
   let urutMuat = 0
   /**
    * KV `list()`/metadata bisa tertinggal beberapa saat setelah PUT. Pastikan
    * keluarga yang sedang dibuka selalu muncul dengan nama lokal terbaru.
-   * @param {{ kode: string, nama: string|null, jumlah: number|null }[]} list
+   * @param {{ kode: string, nama: string|null, jumlah: number|null, revisi?: number }[]} list
    */
   function gabungKeluargaAktif(list) {
     const kode = get(kodeKeluarga)
     const sekarang = get(data)
     if (!kode || sekarang.anggota.length === 0) return list
-    const aktif = { kode, nama: sekarang.nama_keluarga, jumlah: sekarang.anggota.length }
+    const aktif = {
+      kode,
+      nama: sekarang.nama_keluarga,
+      jumlah: sekarang.anggota.length,
+      revisi: get(revisiKeluarga),
+    }
     const i = list.findIndex((f) => f.kode === kode)
     if (i < 0) return [aktif, ...list]
     return list.map((f, j) => (j === i ? { ...f, ...aktif } : f))
@@ -369,15 +382,16 @@
     }
     statusCloud = 'Memuat dari database cloud: ' + kode + '…'
     try {
-      const obj = await ambilDariCloud(kode)
+      const hasil = await ambilDariCloud(kode)
+      const obj = hasil.data
       if (!muatJSON(obj)) {
         statusCloud = 'Database cloud tidak berisi dokumen silsilah.'
         return
       }
       konflikCloud = null
+      setRevisi(hasil.revisi)
       tahanSinkron(false)
-      localStorage.setItem('silsilah:kode', kode)
-      kodeKeluarga.set(kode)
+      gunakanKode(kode)
       history.replaceState({}, '', '/?kode=' + encodeURIComponent(kode))
       ui.update((u) => ({
         ...u,
@@ -400,7 +414,7 @@
    * Hapus satu keluarga dari database. Dokumen di cloud hilang permanen;
    * jika yang dihapus adalah keluarga yang sedang dibuka, dokumen kerja di
    * perangkat juga dibersihkan dan kode dilepas.
-   * @param {{ kode: string, nama: string|null, jumlah: number|null }} f
+   * @param {{ kode: string, nama: string|null, jumlah: number|null, revisi?: number }} f
    */
   async function hapusKeluarga(f) {
     const nama = f.nama || f.kode
@@ -416,7 +430,8 @@
     try {
       // Jangan biarkan PUT yang masih berjalan menulis ulang dokumen setelah DELETE.
       if (f.kode === get(kodeKeluarga)) await simpanSekarang()
-      await hapusDariCloud(f.kode)
+      const revisi = f.kode === get(kodeKeluarga) ? get(revisiKeluarga) : f.revisi ?? 0
+      await hapusDariCloud(f.kode, revisi)
       daftarKeluarga = daftarKeluarga.filter((x) => x.kode !== f.kode)
       if (f.kode === get(kodeKeluarga)) {
         hapusSemua()
@@ -495,7 +510,7 @@
       <button class="hijau" on:click={muatKonflikDariCloud}>
         Muat dari Cloud ({konflikCloud.cloud.anggota.length})
       </button>
-      <button on:click={pakaiDataLokal}>Pakai data perangkat</button>
+      <button on:click={pakaiDataLokal}>Lihat data perangkat</button>
     </div>
   </section>
 {/if}
@@ -505,6 +520,8 @@
     <span>
       {#if $statusSinkron === 'menyimpan'}☁️ Menyimpan ke database…
       {:else if $statusSinkron === 'gagal'}⚠️ Gagal simpan ke cloud.
+      {:else if $statusSinkron === 'konflik'}⚠️ Cloud sudah berubah. Muat Cloud dulu.
+      {:else if $statusSinkron === 'lokal'}📴 Data perangkat ditampilkan; perubahan tidak disimpan.
       {:else if $statusSinkron === 'ditahan'}⏸️ Menunggu pilihan data cloud.
       {:else}☁️ Tersimpan otomatis ke database.{/if}
     </span>

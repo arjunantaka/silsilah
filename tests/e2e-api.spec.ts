@@ -6,7 +6,7 @@ import {
 } from '../functions/api/data.js'
 import { onRequestGet as familiesGet } from '../functions/api/families.js'
 
-type Metadata = { nama?: string; jumlah?: number } | null
+type Metadata = { nama?: string; jumlah?: number; revisi?: number; diubah?: string } | null
 interface KunciKV {
   name: string
   metadata?: Metadata
@@ -25,6 +25,7 @@ interface KVUji {
     list: { limit?: number }[]
   }
   get(kunci: string): Promise<string | null>
+  getWithMetadata(kunci: string): Promise<{ value: string | null; metadata: Metadata }>
   put(kunci: string, nilai: string, opsiPut?: { metadata?: Metadata }): Promise<void>
   delete(kunci: string): Promise<void>
   list(opsiList?: { limit?: number }): Promise<{ keys: KunciKV[] }>
@@ -56,6 +57,14 @@ function kvPalsu(opsi: OpsiKV = {}): KVUji {
       if (opsi.gagalGet) throw opsi.gagalGet
       const nilai = isi.get(kunci)
       return nilai === undefined ? null : nilai
+    },
+    async getWithMetadata(kunci) {
+      if (opsi.gagalGet) throw opsi.gagalGet
+      const nilai = isi.get(kunci)
+      return {
+        value: nilai === undefined ? null : nilai,
+        metadata: metadata.get(kunci) ?? null,
+      }
     },
     async put(kunci, nilai, opsiPut) {
       if (opsi.gagalPut) throw opsi.gagalPut
@@ -133,7 +142,9 @@ test.describe('GET /api/data', () => {
       env: env(kv),
     })
     expect(spasial.status).toBe(200)
-    expect((await bacaJson(spasial)).data).toEqual(DOKUMEN)
+    const bodySpasial = await bacaJson(spasial)
+    expect(bodySpasial.data).toEqual(DOKUMEN)
+    expect(bodySpasial.revisi).toBe(0)
 
     const takDikenal = await dataGet({
       request: permintaan('http://local/api/data?kode=keluarga-hilang'),
@@ -158,7 +169,7 @@ test.describe('PUT /api/data', () => {
     const tanpaBinding = await dataPut({
       request: permintaan('http://local/api/data', {
         method: 'PUT',
-        body: JSON.stringify({ kode: 'keluarga-uji', data: DOKUMEN }),
+        body: JSON.stringify({ kode: 'keluarga-uji', data: DOKUMEN, revisi: 0 }),
       }),
       env: env(),
     })
@@ -175,7 +186,7 @@ test.describe('PUT /api/data', () => {
       const res = await dataPut({
         request: permintaan('http://local/api/data', {
           method: 'PUT',
-          body: JSON.stringify({ kode, data: DOKUMEN }),
+          body: JSON.stringify({ kode, data: DOKUMEN, revisi: 0 }),
         }),
         env: env(kv),
       })
@@ -199,7 +210,7 @@ test.describe('PUT /api/data', () => {
       const res = await dataPut({
         request: permintaan('http://local/api/data', {
           method: 'PUT',
-          body: JSON.stringify({ kode: 'keluarga-bentuk', data }),
+          body: JSON.stringify({ kode: 'keluarga-bentuk', data, revisi: 0 }),
         }),
         env: env(kv),
       })
@@ -222,7 +233,7 @@ test.describe('PUT /api/data', () => {
     const res = await dataPut({
       request: permintaan('http://local/api/data', {
         method: 'PUT',
-        body: JSON.stringify({ kode: 'keluarga-besar', data: besar }),
+        body: JSON.stringify({ kode: 'keluarga-besar', data: besar, revisi: 0 }),
       }),
       env: env(kv),
     })
@@ -236,7 +247,7 @@ test.describe('PUT /api/data', () => {
     const res = await dataPut({
       request: permintaan('http://local/api/data', {
         method: 'PUT',
-        body: JSON.stringify({ kode: '  KELUARGA-KONTRAK  ', data: DOKUMEN }),
+        body: JSON.stringify({ kode: '  KELUARGA-KONTRAK  ', data: DOKUMEN, revisi: 0 }),
       }),
       env: env(kv),
     })
@@ -244,13 +255,55 @@ test.describe('PUT /api/data', () => {
     const body = await bacaJson(res)
     expect(body.ok).toBe(true)
     expect(body.data).toBe('keluarga-kontrak')
+    expect(body.revisi).toBe(1)
 
     expect(kv.catatan.put).toHaveLength(1)
     const simpan = kv.catatan.put[0]
     expect(simpan.kunci).toBe('keluarga-kontrak')
     expect(JSON.parse(simpan.nilai)).toEqual(DOKUMEN)
-    expect(simpan.metadata).toEqual({ nama: 'Keluarga Kontrak', jumlah: 2 })
+    expect(simpan.metadata).toMatchObject({
+      nama: 'Keluarga Kontrak',
+      jumlah: 2,
+      revisi: 1,
+    })
+    expect(simpan.metadata?.diubah).toMatch(/^\d{4}-\d{2}-\d{2}T/)
     expect(kv.isi.get('keluarga-kontrak')).toBe(JSON.stringify(DOKUMEN))
+  })
+
+  test('menolak revisi lama, menerima revisi terbaru, dan menyimpan backup', async () => {
+    const kv = kvPalsu()
+    const docA = { nama_keluarga: 'Versi A', anggota: [{ id: 'a', nama: 'Ani' }] }
+    const docB = { nama_keluarga: 'Versi B', anggota: [{ id: 'a', nama: 'Ani' }, { id: 'b', nama: 'Budi' }] }
+    const put = (data: unknown, revisi: number | undefined) =>
+      dataPut({
+        request: permintaan('http://local/api/data', {
+          method: 'PUT',
+          body: JSON.stringify({ kode: 'keluarga-revisi', data, ...(revisi === undefined ? {} : { revisi }) }),
+        }),
+        env: env(kv),
+      })
+
+    const pertama = await put(docA, 0)
+    expect(pertama.status).toBe(200)
+    expect((await bacaJson(pertama)).revisi).toBe(1)
+
+    // Klien lama tanpa revisi tidak boleh menulis.
+    const tanpaRevisi = await put(docB, undefined)
+    expect(tanpaRevisi.status).toBe(409)
+
+    // Revisi 0 sudah basi setelah tulisan pertama.
+    const basi = await put(docB, 0)
+    expect(basi.status).toBe(409)
+    const bodyBasi = await bacaJson(basi)
+    expect(bodyBasi.revisi).toBe(1)
+    expect(JSON.parse(kv.isi.get('keluarga-revisi')!)).toEqual(docA)
+
+    // Revisi 1 adalah versi terbaru; backup berisi versi A.
+    const kedua = await put(docB, 1)
+    expect(kedua.status).toBe(200)
+    expect((await bacaJson(kedua)).revisi).toBe(2)
+    expect(JSON.parse(kv.isi.get('keluarga-revisi')!)).toEqual(docB)
+    expect(JSON.parse(kv.isi.get('__backup__:keluarga-revisi')!)).toEqual(docA)
   })
 })
 
@@ -289,14 +342,14 @@ test.describe('DELETE /api/data', () => {
     const kv = kvPalsu({ isi })
 
     const takDikenal = await dataDelete({
-      request: permintaan('http://local/api/data?kode=keluarga-hilang&konfirmasi=ya', { method: 'DELETE' }),
+      request: permintaan('http://local/api/data?kode=keluarga-hilang&konfirmasi=ya&revisi=0', { method: 'DELETE' }),
       env: env(kv),
     })
     expect(takDikenal.status).toBe(404)
     expect(kv.catatan.hapus).toHaveLength(0)
 
     const sukses = await dataDelete({
-      request: permintaan('http://local/api/data?kode=%20KELUARGA-UJI%20&konfirmasi=ya', {
+      request: permintaan('http://local/api/data?kode=%20KELUARGA-UJI%20&konfirmasi=ya&revisi=0', {
         method: 'DELETE',
       }),
       env: env(kv),
@@ -305,30 +358,55 @@ test.describe('DELETE /api/data', () => {
     expect((await bacaJson(sukses)).data).toBe('keluarga-uji')
     expect(kv.catatan.hapus).toEqual(['keluarga-uji'])
     expect(kv.isi.has('keluarga-uji')).toBe(false)
+    expect(kv.isi.has('__backup__:keluarga-uji')).toBe(true)
+  })
+
+  test('menolak hapus tanpa revisi atau dengan revisi basi', async () => {
+    const isi = new Map<string, string>([['keluarga-uji', JSON.stringify(DOKUMEN)]])
+    const metadata = new Map<string, Metadata>([['keluarga-uji', { revisi: 2 }]])
+    const kv = kvPalsu({ isi, metadata })
+
+    const tanpaRevisi = await dataDelete({
+      request: permintaan('http://local/api/data?kode=keluarga-uji&konfirmasi=ya', { method: 'DELETE' }),
+      env: env(kv),
+    })
+    expect(tanpaRevisi.status).toBe(400)
+
+    const basi = await dataDelete({
+      request: permintaan('http://local/api/data?kode=keluarga-uji&konfirmasi=ya&revisi=1', {
+        method: 'DELETE',
+      }),
+      env: env(kv),
+    })
+    expect(basi.status).toBe(409)
+    expect((await bacaJson(basi)).revisi).toBe(2)
+    expect(kv.isi.has('keluarga-uji')).toBe(true)
+    expect(kv.catatan.hapus).toHaveLength(0)
   })
 })
 
 test.describe('GET /api/families', () => {
-  test('menolak tanpa binding, meminta limit 100, dan memberi null pada metadata yang hilang', async () => {
+  test('menolak tanpa binding, meminta daftar lebar, dan menyaring backup', async () => {
     const tanpaBinding = await familiesGet({ request: permintaan('http://local/api/families'), env: env() })
     expect(tanpaBinding.status).toBe(503)
     expect((await bacaJson(tanpaBinding)).ok).toBe(false)
 
     const kv = kvPalsu({
       kunci: [
-        { name: 'keluarga-satu', metadata: { nama: 'Keluarga Satu', jumlah: 3 } },
+        { name: 'keluarga-satu', metadata: { nama: 'Keluarga Satu', jumlah: 3, revisi: 4 } },
         { name: 'keluarga-dua' },
         { name: 'keluarga-tiga', metadata: null },
+        { name: '__backup__:keluarga-satu', metadata: { nama: 'Backup', jumlah: 99 } },
       ],
     })
     const res = await familiesGet({ request: permintaan('http://local/api/families'), env: env(kv) })
     expect(res.status).toBe(200)
     expect((await bacaJson(res)).data).toEqual([
-      { kode: 'keluarga-satu', nama: 'Keluarga Satu', jumlah: 3 },
-      { kode: 'keluarga-dua', nama: null, jumlah: null },
-      { kode: 'keluarga-tiga', nama: null, jumlah: null },
+      { kode: 'keluarga-satu', nama: 'Keluarga Satu', jumlah: 3, revisi: 4 },
+      { kode: 'keluarga-dua', nama: null, jumlah: null, revisi: 0 },
+      { kode: 'keluarga-tiga', nama: null, jumlah: null, revisi: 0 },
     ])
-    expect(kv.catatan.list).toEqual([{ limit: 100 }])
+    expect(kv.catatan.list).toEqual([{ limit: 1000 }])
   })
 
   test('mengembalikan array kosong saat belum ada keluarga', async () => {
@@ -357,7 +435,7 @@ test.describe('kegagalan penyimpanan KV', () => {
       dataPut({
         request: permintaan('http://local/api/data', {
           method: 'PUT',
-          body: JSON.stringify({ kode: 'keluarga-uji', data: DOKUMEN }),
+          body: JSON.stringify({ kode: 'keluarga-uji', data: DOKUMEN, revisi: 0 }),
         }),
         env: env(kv),
       }),
@@ -368,7 +446,7 @@ test.describe('kegagalan penyimpanan KV', () => {
   test('DELETE data meneruskan kegagalan get/delete KV', async () => {
     await expect(
       dataDelete({
-        request: permintaan('http://local/api/data?kode=keluarga-uji&konfirmasi=ya', { method: 'DELETE' }),
+        request: permintaan('http://local/api/data?kode=keluarga-uji&konfirmasi=ya&revisi=0', { method: 'DELETE' }),
         env: env(kvPalsu({ gagalGet: mati() })),
       }),
     ).rejects.toThrow('KV sedang tidak tersedia')
@@ -376,7 +454,7 @@ test.describe('kegagalan penyimpanan KV', () => {
     const isi = new Map<string, string>([['keluarga-uji', JSON.stringify(DOKUMEN)]])
     await expect(
       dataDelete({
-        request: permintaan('http://local/api/data?kode=keluarga-uji&konfirmasi=ya', { method: 'DELETE' }),
+        request: permintaan('http://local/api/data?kode=keluarga-uji&konfirmasi=ya&revisi=0', { method: 'DELETE' }),
         env: env(kvPalsu({ isi, gagalDelete: mati() })),
       }),
     ).rejects.toThrow('KV sedang tidak tersedia')
