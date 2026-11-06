@@ -1,7 +1,8 @@
 # Plan 003: Satu Sumber Kebenaran (D1) dan Sinkronisasi Otomatis
 
-Tanggal: 2026-11-06
-## 1. Mengapa harus ganti arsitektur (bukti investigasi 2026-11-06)
+Status: TEREKSEKUSI 2026-11-06 (semua fase, termasuk rekonsiliasi satu edit
+user yang masuk KV di antara snapshot dan cutover: Imas disambungkan ayahnya,
+revisi 44). Sisa satu: hapus kompat PUT/DELETE /api/data setelah 2 minggu.
 Tujuan dari pemilik: SETIAP perubahan oleh user/perangkat mana pun tersimpan otomatis (auto save) dan langsung tersinkron ke user lain. Tidak ada lagi pilihan "Muat Cloud vs data perangkat", tidak ada mode data lokal. Satu trust source: database cloud.
 
 ## 1. Mengapa harus ganti arsitektur (bukatan investigasi 2026-11-06)
