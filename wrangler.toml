@@ -1,11 +1,20 @@
-# Konfigurasi Cloudflare Pages + KV untuk Silsilah Keluarga.
+# Konfigurasi Cloudflare Pages untuk Silsilah Keluarga.
+# Sumber kebenaran data = D1 (satu baris per anggota); lihat DEPLOY.md.
 name = "silsilah-keluarga"
 compatibility_date = "2025-01-01"
 pages_build_output_dir = "dist"
 
+# KV lama DIBEKUKAN read-only sebagai salinan rollback 2 minggu (plan-003);
+# API baru tidak lagi menulis ke sini.
 [[kv_namespaces]]
 binding = "SILSILAH_KV"
 id = "ccea02ef1e054091b1f7d3efe0688f6b"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "silsilah"
+database_id = "bff057b6-8bcc-496b-a75d-027eac316aaf"
+migrations_dir = "migrations"
 
 # Preview (branch selain main) memakai database sendiri supaya uji coba di
 # link preview tidak menyentuh data produksi.
@@ -13,3 +22,9 @@ id = "ccea02ef1e054091b1f7d3efe0688f6b"
 [[env.preview.kv_namespaces]]
 binding = "SILSILAH_KV"
 id = "00f0ef62e8c2429dbf4128dd57031462"
+
+[[env.preview.d1_databases]]
+binding = "DB"
+database_name = "silsilah-preview"
+database_id = "4121f656-69ec-416f-9c5c-606cc1c41532"
+migrations_dir = "migrations"

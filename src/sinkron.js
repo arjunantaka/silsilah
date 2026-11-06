@@ -1,22 +1,36 @@
-// Sinkron otomatis: tiap perubahan data dikirim ke cloud (debounce 3 detik).
-// Kode keluarga dibuat otomatis saat penyimpanan pertama.
+// Sinkron otomatis dua arah: setiap perubahan lokal dikirim ke cloud
+// (debounce 1,5 detik), perubahan user lain ditarik lewat delta (tiap 10 detik
+// saat tab terlihat, langsung setelah kirim/online/tab kembali terlihat).
+// Cloud D1 sumber kebenaran: tidak ada konflik, tidak ada mode data lokal.
+// localStorage hanya cache render dan antrean offline.
 import { writable, get } from 'svelte/store'
-import { data } from './store.js'
-import { simpanKeCloud, buatKodeBaru } from './cloud.js'
+import {
+  data,
+  saatUbah,
+  ambilAntrean,
+  jumlahAntrean,
+  aturKodeAntrean,
+  bersihkanAntrean,
+  kosongkanAntrean,
+  terapkanRemote,
+  terapkanDokumen,
+} from './store.js'
+import { kirimPerubahan, ambilDelta, buatKodeBaru } from './cloud.js'
 
-const JEDA_MS = 3000
+const JEDA_KIRIM = 1500
+const JEDA_TARIK = 10000
 const KEY_KODE = 'silsilah:kode'
 const KEY_REVISI = 'silsilah:revisi'
 
-/** @type {import('svelte/store').Writable<'idle'|'menyimpan'|'tersimpan'|'gagal'|'ditahan'|'konflik'|'lokal'>} */
+/** @type {import('svelte/store').Writable<'idle'|'menyimpan'|'tersimpan'|'offline'>} */
 export const statusSinkron = writable('idle')
 /** @type {import('svelte/store').Writable<string>} */
 export const kodeKeluarga = writable(localStorage.getItem(KEY_KODE) || '')
-/** Revisi dokumen cloud yang terakhir dimuat/disimpan. */
+/** Kursor perubahan cloud yang sudah diterapkan dokumen aktif. */
 export const revisiKeluarga = writable(Number(localStorage.getItem(KEY_REVISI)) || 0)
 
 /**
- * Simpan revisi dokumen aktif agar PUT berikutnya memakai versi yang benar.
+ * Simpan kursor revisi dokumen aktif.
  * @param {number} revisi
  */
 export function setRevisi(revisi) {
@@ -27,31 +41,6 @@ export function setRevisi(revisi) {
   } catch {}
 }
 
-/** @type {any} */
-let timer = null
-/** @type {Promise<void>|null} */
-let antre = null
-// Ada perubahan baru yang belum masuk ke permintaan PUT mana pun.
-let perlu = false
-// Konflik cloud vs cache belum diputuskan: jangan tulis apa pun ke cloud.
-let ditahan = false
-
-/**
- * Tahan/lepas autosave. Dipakai saat cloud dan cache perangkat berbeda supaya
- * cache lama tidak menimpa database sebelum pengguna memilih.
- * @param {boolean} nilai
- */
-export function tahanSinkron(nilai) {
-  ditahan = nilai
-  if (nilai) {
-    clearTimeout(timer)
-    timer = null
-    statusSinkron.set('ditahan')
-  } else if (['ditahan', 'lokal', 'konflik'].includes(get(statusSinkron))) {
-    statusSinkron.set('idle')
-  }
-}
-
 /** @param {string} kode */
 function setKode(kode) {
   kodeKeluarga.set(kode)
@@ -60,102 +49,154 @@ function setKode(kode) {
   } catch {}
 }
 
-// Lepas kode: data berikutnya mendapat kode keluarga baru
-// (dipakai saat membuka file JSON dan Silsilah Baru - jangan menimpa keluarga lama).
+// Lepas kode: data berikutnya mendapat kode keluarga baru (dipakai saat membuka
+// file JSON dan Silsilah Baru). Antrean ikut dikosongkan: penahanannya adalah
+// ruang kerja lama, bukan keluarga lama di cloud.
 export function lepasKode() {
   kodeKeluarga.set('')
   setRevisi(0)
+  kosongkanAntrean()
   try {
     localStorage.removeItem(KEY_KODE)
   } catch {}
 }
 
+/** @type {any} */
+let timerKirim = null
+/** @type {any} */
+let timerTarik = null
+let sedangKirim = false
+let sedangTarik = false
+
+function jadwalKirim() {
+  clearTimeout(timerKirim)
+  timerKirim = setTimeout(() => {
+    simpanSekarang()
+  }, JEDA_KIRIM)
+}
+
 /**
- * Simpan sekarang tanpa menunggu debounce; juga tombol "Coba lagi".
- *
- * Perubahan yang datang saat PUT sedang berjalan tidak boleh hilang: dulu
- * pemanggilan kedua langsung `return` karena `sedang`, lalu status tetap
- * "tersimpan" padahal nama/anggota terbaru belum pernah dikirim. Sekarang
- * semua pemanggil masuk antrean dan antrean mengulang selama masih ada
- * perubahan baru.
+ * Dorong antrean sekarang tanpa menunggu debounce; juga tombol "Coba lagi".
+ * true bila tidak ada yang perlu dikirim atau semua terkirim. Kegagalan
+ * jaringan tidak melempar: status menjadi 'offline' dan antrean menunggu.
+ * @returns {Promise<boolean>}
  */
-export function simpanSekarang() {
-  if (ditahan) return Promise.resolve()
-  perlu = true
-  if (antre) return antre
-
-  antre = (async () => {
-    let berhasil = true
-    try {
-      while (perlu) {
-        perlu = false
-        const d = get(data)
-        if (d.anggota.length === 0) break
-        statusSinkron.set('menyimpan')
-        let kode = get(kodeKeluarga)
-        if (!kode) {
-          kode = await buatKodeBaru()
-          setKode(kode)
-          setRevisi(0)
-        }
-        const hasil = await simpanKeCloud(kode, get(revisiKeluarga))
-        setRevisi(hasil.revisi)
-        statusSinkron.set('tersimpan')
-      }
-    } catch (e) {
-      berhasil = false
-      if (/** @type {any} */ (e)?.status === 409) {
-        // Cloud sudah berubah (tab/perangkat lain). Berhenti menulis dan
-        // tampilkan tombol Muat Cloud; jangan pernah retry dengan paksa.
-        ditahan = true
-        clearTimeout(timer)
-        timer = null
-        statusSinkron.set('konflik')
-      } else {
-        statusSinkron.set('gagal')
-      }
-    } finally {
-      antre = null
+export async function simpanSekarang() {
+  const { kode: kodeAntrean, nama, entri } = ambilAntrean()
+  if (entri.length === 0 && !nama) return true
+  if (sedangKirim) {
+    // Ada kirim lain yang sedang jalan: coba lagi begitu itu selesai.
+    jadwalKirim()
+    return false
+  }
+  sedangKirim = true
+  try {
+    let kode = kodeAntrean || get(kodeKeluarga)
+    if (!kode) {
+      kode = await buatKodeBaru()
+      setKode(kode)
     }
-    if (perlu) {
-      if (berhasil) simpanSekarang()
-      else perlu = false // biarkan pengguna menekan "Coba lagi" / perubahan berikutnya
-    }
-  })()
-  return antre
+    aturKodeAntrean(kode)
+    statusSinkron.set('menyimpan')
+    await kirimPerubahan(kode, {
+      perubahan: entri.map(([id, rec]) => ({ id, rec })),
+      nama: get(data).nama_keluarga,
+    })
+    bersihkanAntrean(entri, nama)
+    statusSinkron.set('tersimpan')
+    tarikSekarang()
+    return true
+  } catch {
+    statusSinkron.set('offline')
+    // Tidak menjadwalkan ulang otomatis: percobaan berikutnya menunggu
+    // perubahan baru, online, atau tab kembali terlihat.
+    return false
+  } finally {
+    sedangKirim = false
+  }
 }
 
-function jadwal() {
-  if (ditahan) return
-  clearTimeout(timer)
-  timer = setTimeout(() => simpanSekarang(), JEDA_MS)
+// Dorong terbaik saat tab ditutup: keepalive membiarkan permintaan tetap
+// jalan setelah halaman mati (batas keepalive 64 KB, cukup untuk edit biasa).
+function dorongSaatTutup() {
+  const { kode: kodeAntrean, nama, entri } = ambilAntrean()
+  if (entri.length === 0 && !nama) return
+  const kode = kodeAntrean || get(kodeKeluarga)
+  if (!kode) return
+  kirimPerubahan(
+    kode,
+    { perubahan: entri.map(([id, rec]) => ({ id, rec })), nama: get(data).nama_keluarga },
+    { keepalive: true },
+  )
+    .then(() => bersihkanAntrean(entri, nama))
+    .catch(() => {}) // gagal: antrean tetap ada untuk sesi berikutnya
 }
 
 /**
- * Mulai sinkron otomatis; kembalikan unsubscribe.
- *
- * Emisi pertama dari subscribe bukan perubahan pengguna: itu dokumen lama dari
- * localStorage. Jangan langsung mendorongnya ke cloud karena bisa menimpa
- * dokumen yang lebih baru (mis. cache 49 orang vs database 180 orang).
- * Dokumen tanpa kode tetap didorong agar keluarga lama mendapat kode baru.
+ * Tarik perubahan user lain sekarang. Kursor hanya maju ke revisi yang
+ * barisnya benar-benar sudah diterapkan; flush server atomik, jadi tidak ada
+ * perubahan yang terlewati.
+ */
+export async function tarikSekarang() {
+  const kode = get(kodeKeluarga)
+  if (!kode || sedangTarik || document.hidden) return
+  sedangTarik = true
+  try {
+    const hasil = await ambilDelta(kode, get(revisiKeluarga))
+    if (hasil.penuh && hasil.data) {
+      if (terapkanDokumen(hasil.data)) setRevisi(hasil.revisi)
+    } else {
+      terapkanRemote(hasil.ubah, hasil.nama_keluarga)
+      setRevisi(hasil.revisi)
+    }
+    if (hasil.ubah && hasil.ubah.length > 0) kanal?.postMessage('ubah')
+  } catch {
+    // offline / kode belum ada: coba lagi pada jadwal berikutnya
+  } finally {
+    sedangTarik = false
+  }
+}
+
+function jadwalTarik() {
+  clearTimeout(timerTarik)
+  timerTarik = setTimeout(() => {
+    tarikSekarang().finally(jadwalTarik)
+  }, JEDA_TARIK)
+}
+
+// Tab lain di browser yang sama langsung tahu ada perubahan.
+const kanal = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('silsilah') : null
+kanal?.addEventListener('message', () => tarikSekarang())
+
+/**
+ * Mulai sinkron dua arah; kembalikan unsubscribe.
  */
 export function mulaiSinkron() {
-  let pertama = true
-  const berhenti = data.subscribe((d) => {
-    if (pertama) {
-      pertama = false
-      if (!get(kodeKeluarga) && d.anggota.length > 0) jadwal()
-      return
+  saatUbah(jadwalKirim)
+  const terlihat = () => {
+    if (!document.hidden) {
+      tarikSekarang()
+      simpanSekarang()
     }
-    if (d.anggota.length > 0) jadwal()
-  })
-  // Coba lagi otomatis setelah koneksi kembali, tanpa menunggu edit berikutnya.
-  const online = () => {
-    if (get(statusSinkron) === 'gagal') simpanSekarang()
   }
+  const online = () => {
+    tarikSekarang()
+    simpanSekarang()
+  }
+  document.addEventListener('visibilitychange', terlihat)
   window.addEventListener('online', online)
+  // Sisa antrean dari sesi offline kemarin: dorong sekarang. Flush memakai
+  // kode asal entri, jadi bila antreannya milik keluarga lain (link ?kode=
+  // berbeda dibuka saat offline), perubahan lama tetap sampai ke keluarganya.
+  if (jumlahAntrean() > 0) simpanSekarang()
+  window.addEventListener('pagehide', dorongSaatTutup)
+  jadwalTarik()
+
   return () => {
-    berhenti()
+    document.removeEventListener('visibilitychange', terlihat)
     window.removeEventListener('online', online)
+    window.removeEventListener('pagehide', dorongSaatTutup)
+    clearTimeout(timerKirim)
+    clearTimeout(timerTarik)
   }
 }

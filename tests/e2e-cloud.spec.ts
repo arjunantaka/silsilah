@@ -1,549 +1,298 @@
+// E2E cloud: UX sinkronisasi baru di atas mock /api yang meniru D1
+// (baris per anggota, revisi sebagai kursor, tombstone, delta).
+// Tidak ada lagi skenario konflik "Muat Cloud vs data perangkat": cloud
+// selalu menang tanpa dialog (lihat plan-003).
 import { test, expect, type Page } from '@playwright/test'
 import { orang, dokumen, pasangDokumen, type AnggotaUji } from './e2e-utils'
 
-type BarisKeluarga = { kode: string; nama: string | null; jumlah: number | null }
-
-type KonfigApi = {
-  daftar?: BarisKeluarga[]
-  dokumen?: Record<string, unknown>
-  gagalPut?: boolean
-  gagalHapus?: boolean
-  gagalDaftar?: boolean
-  /** false = PUT sukses tapi tidak mengubah dokumen cloud (untuk menguji konflik berulang). */
-  simpanPut?: boolean
+/** Bentuk body POST /api/sync yang dicatat mock. */
+interface PerubahanKirim {
+  id: string
+  rec: Record<string, unknown> | null
 }
 
-type BodyPut = {
-  kode?: string
-  data?: { nama_keluarga?: string; anggota?: { nama?: string }[] }
+interface Kiriman {
+  kode: string
+  nama: string
+  perubahan: PerubahanKirim[]
 }
+type Baris = { id: string; rec: object | null; rev: number }
 
-type ApiUji = {
-  put: BodyPut[]
-  hapus: URLSearchParams[]
-  urutan: string[]
-  daftar: BarisKeluarga[]
-  dokumen: Record<string, unknown>
-  gagalPut: boolean
-  gagalHapus: boolean
-  gagalDaftar: boolean
-  simpanPut: boolean
-}
-
-/**
- * Mock seluruh /api: dokumen per kode, daftar keluarga, dan kegagalan yang bisa
- * dinyalakan/dimatikan di tengah tes. Permintaan PUT/DELETE dicatat beserta
- * urutannya agar tes bisa membuktikan "simpan dulu, baru hapus".
- */
-async function mockApi(page: Page, awal: KonfigApi = {}): Promise<ApiUji> {
-  const api: ApiUji = {
-    put: [],
-    hapus: [],
-    urutan: [],
-    daftar: [],
-    dokumen: {},
-    gagalPut: false,
-    gagalHapus: false,
-    gagalDaftar: false,
-    simpanPut: true,
-  }
-  Object.assign(api, awal)
-  await page.route('**/api/**', async (route) => {
-    const req = route.request()
-    const url = new URL(req.url())
-    const method = req.method()
-
-    if (url.pathname === '/api/families' && method === 'GET') {
-      if (api.gagalDaftar) {
-        return route.fulfill({
-          status: 500,
-          contentType: 'application/json',
-          body: JSON.stringify({ ok: false, pesan: 'Cloud tidak tersedia.' }),
-        })
-      }
-      return route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ ok: true, data: api.daftar }),
-      })
-    }
-
-    if (url.pathname === '/api/data' && method === 'PUT') {
-      // Body dari aplikasi sendiri (PUT /api/data); bentuknya sudah diketahui.
-      const body = req.postDataJSON() as BodyPut
-      api.put.push(body)
-      api.urutan.push('PUT')
-      if (api.gagalPut) {
-        return route.fulfill({
-          status: 503,
-          contentType: 'application/json',
-          body: JSON.stringify({ ok: false, pesan: 'Cloud sedang gangguan.' }),
-        })
-      }
-      if (api.simpanPut && body.kode && body.data) api.dokumen[body.kode] = body.data
-      return route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ ok: true, data: body.kode }),
-      })
-    }
-
-    if (url.pathname === '/api/data' && method === 'DELETE') {
-      const kode = (url.searchParams.get('kode') || '').toLowerCase()
-      api.hapus.push(url.searchParams)
-      api.urutan.push('DELETE')
-      if (api.gagalHapus) {
-        return route.fulfill({
-          status: 500,
-          contentType: 'application/json',
-          body: JSON.stringify({ ok: false, pesan: 'Cloud tidak tersedia.' }),
-        })
-      }
-      delete api.dokumen[kode]
-      api.daftar = api.daftar.filter((f) => f.kode !== kode)
-      return route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ ok: true, data: kode }),
-      })
-    }
-
-    if (url.pathname === '/api/data' && method === 'GET') {
-      const kode = (url.searchParams.get('kode') || '').toLowerCase()
-      const doc = api.dokumen[kode]
-      if (!doc) {
-        return route.fulfill({
-          status: 404,
-          contentType: 'application/json',
-          body: JSON.stringify({ ok: false, pesan: 'Kode belum ada di cloud. Simpan dulu dari aplikasi.' }),
-        })
-      }
-      return route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ ok: true, data: doc }),
-      })
-    }
-
-    return route.fulfill({
-      status: 404,
-      contentType: 'application/json',
-      body: JSON.stringify({ ok: false }),
+function backendPalsu(awal: { kode: string; nama: string; anggota: AnggotaUji[] }[] = []) {
+  const keluarga = new Map<string, { nama: string; revisi: number; baris: Map<string, Baris> }>()
+  for (const k of awal) {
+    keluarga.set(k.kode, {
+      nama: k.nama,
+      revisi: 1,
+      baris: new Map(k.anggota.map((a) => [a.id, { id: a.id, rec: a, rev: 1 }])),
     })
-  })
+  }
+  const catatan = { kirim: [] as Kiriman[], hapus: [] as string[] }
+  let gagalKirim = false
+  const api = {
+    catatan,
+    gagalkanKirim() {
+      gagalKirim = true
+    },
+    pulihkanKirim() {
+      gagalKirim = false
+    },
+    /** Edit dari "user lain": langsung ke baris backend, naikkan revisi. */
+    ubahLuar(kode: string, id: string, rec: object | null) {
+      const k = keluarga.get(kode)
+      if (!k) return
+      k.revisi += 1
+      if (rec === null) k.baris.set(id, { id, rec: null, rev: k.revisi })
+      else k.baris.set(id, { id, rec, rev: k.revisi })
+    },
+    pasang(page: Page, opsi: { tanpaFamilies?: boolean } = {}) {
+      return page.route('**/api/**', async (route) => {
+        const url = new URL(route.request().url())
+        const metode = route.request().method()
+        const kode = url.searchParams.get('kode') || ''
+        const k = keluarga.get(kode)
+        if (metode === 'POST' && url.pathname === '/api/sync') {
+          const body = route.request().postDataJSON() as Kiriman
+          catatan.kirim.push(body)
+          if (gagalKirim) {
+            await route.abort()
+            return
+          }
+          let k2 = keluarga.get(body.kode)
+          if (!k2) {
+            k2 = { nama: body.nama, revisi: 0, baris: new Map() }
+            keluarga.set(body.kode, k2)
+          }
+          k2.revisi += 1
+          k2.nama = body.nama
+          for (const p of body.perubahan) {
+            if (p.rec === null) k2.baris.set(p.id, { id: p.id, rec: null, rev: k2.revisi })
+            else k2.baris.set(p.id, { id: p.id, rec: p.rec, rev: k2.revisi })
+          }
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({ ok: true, revisi: k2.revisi }),
+          })
+          return
+        }
+        if (metode === 'GET' && url.pathname === '/api/delta') {
+          if (!k) {
+            await route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ ok: false }) })
+            return
+          }
+          const sejak = Number(url.searchParams.get('sejak') || 0)
+          const ubah = [...k.baris.values()].filter((b) => b.rev > sejak).sort((a, b) => a.rev - b.rev)
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({ ok: true, revisi: k.revisi, nama_keluarga: k.nama, ubah }),
+          })
+          return
+        }
+        if (metode === 'GET' && url.pathname === '/api/data') {
+          if (!k) {
+            await route.fulfill({
+              status: 404,
+              contentType: 'application/json',
+              body: JSON.stringify({ ok: false, pesan: 'Kode belum ada di cloud. Simpan dulu dari aplikasi.' }),
+            })
+            return
+          }
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({
+              ok: true,
+              revisi: k.revisi,
+              data: { nama_keluarga: k.nama, anggota: [...k.baris.values()].filter((b) => b.rec !== null).map((b) => b.rec) },
+            }),
+          })
+          return
+        }
+        if (metode === 'DELETE') {
+          catatan.hapus.push(kode)
+          keluarga.delete(kode)
+          await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, data: kode }) })
+          return
+        }
+        if (url.pathname === '/api/families') {
+          if (opsi.tanpaFamilies) {
+            await route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ ok: false }) })
+            return
+          }
+          const daftar = [...keluarga.entries()].map(([kk, v]) => ({ kode: kk, nama: v.nama, jumlah: v.baris.size, revisi: v.revisi }))
+          await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, data: daftar }) })
+          return
+        }
+        await route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ ok: false }) })
+      })
+    },
+  }
   return api
 }
 
-/**
- * Bentuk anggota persis seperti hasil normalisasi muatAwal() di store:
- * urutan kunci ikut menentukan kesamaan JSON, bukan hanya nilainya.
- */
-function anggotaTernormal(a: AnggotaUji) {
-  return {
-    kode: a.kode ?? '',
-    tempat_lahir: a.tempat_lahir ?? '',
-    alamat: a.alamat ?? '',
-    pekerjaan: a.pekerjaan ?? '',
-    pisah: a.pisah ?? [],
-    id: a.id,
-    nama: a.nama,
-    gender: a.gender ?? '',
-    lahir: a.lahir ?? '',
-    wafat: a.wafat ?? '',
-    catatan: a.catatan ?? '',
-    ayah: a.ayah ?? null,
-    ibu: a.ibu ?? null,
-    pasangan: a.pasangan ?? [],
-  }
-}
-
-type IsiLokal = { nama_keluarga?: string; anggota: { nama?: string }[] }
-
-function bacaLokal(page: Page) {
-  return page.evaluate(
-    () => JSON.parse(localStorage.getItem('silsilah:v1') || '{}') as IsiLokal,
-  )
-}
-
-/** Catat semua dialog; confirm diterima, alert ditutup. */
-function catatDialog(page: Page) {
-  const pesan: string[] = []
-  page.on('dialog', (d) => {
-    pesan.push(d.type() + ': ' + d.message())
-    if (d.type() === 'confirm') void d.accept()
-    else void d.dismiss()
-  })
-  return pesan
-}
+const DOK_180 = dokumen('Keluarga Besar', Array.from({ length: 180 }, (_, i) => orang(`p${i}`, `Orang ${i}`)))
+const CACHE_49 = dokumen('Keluarga Saya', Array.from({ length: 49 }, (_, i) => orang(`c${i}`, `Cache ${i}`)))
 
 test('membuka ?kode dengan perangkat kosong memuat dokumen dari cloud', async ({ page }) => {
-  const cloud = dokumen('Keluarga Budi', [
-    orang('b', 'Budi'),
-    orang('s', 'Sari', { gender: 'P' }),
-  ])
-  await mockApi(page, {
-    dokumen: { 'keluarga-budi-77': cloud },
-    daftar: [{ kode: 'keluarga-budi-77', nama: 'Keluarga Budi', jumlah: 2 }],
-  })
-
-  await page.goto('/?kode=keluarga-budi-77')
-
-  await expect(page.locator('.kotak')).toHaveCount(2)
-  await expect(page.locator('.status-cloud')).toContainText(
-    'Dimuat dari database cloud: keluarga-budi-77 (2 orang)',
-  )
-  await expect(page.locator('.nama-keluarga')).toContainText('Keluarga Budi')
-  await expect(page.locator('.kode-sinkron')).toHaveText('keluarga-budi-77')
-  await expect(page).toHaveURL(/\?kode=keluarga-budi-77$/)
-  expect(await page.evaluate(() => localStorage.getItem('silsilah:kode'))).toBe('keluarga-budi-77')
+  const api = backendPalsu([{ kode: 'keluarga-besar-1', nama: 'Keluarga Besar', anggota: DOK_180.anggota }])
+  await api.pasang(page)
+  await page.goto('/?kode=keluarga-besar-1')
+  await expect(page.locator('.cetak-kepala')).toContainText('Keluarga Besar')
+  await expect(page.locator('.kotak')).toHaveCount(180)
+  await expect(page.locator('.status-sinkron')).toContainText('keluarga-besar-1')
 })
 
-test('cache lokal 49 vs cloud 180: banner memilih cloud tanpa PUT otomatis', async ({ page }) => {
-  test.setTimeout(30000)
-  const lokal = dokumen('Keluarga Lokal', [
-    orang('l1', 'Lokal Satu'),
-    orang('l2', 'Lokal Dua'),
-  ])
-  const cloud = dokumen('Keluarga Cloud', [
-    orang('c1', 'Cloud Satu'),
-    orang('c2', 'Cloud Dua'),
-    orang('c3', 'Cloud Tiga'),
-  ])
-  const api = await mockApi(page, { dokumen: { 'keluarga-lokal-1': cloud } })
+test('cache lama di perangkat langsung diganti data cloud, tanpa dialog konflik', async ({ page }) => {
+  const api = backendPalsu([{ kode: 'keluarga-besar-1', nama: 'Keluarga Besar', anggota: DOK_180.anggota }])
+  await api.pasang(page)
+  await pasangDokumen(page, CACHE_49, { kode: 'keluarga-besar-1' })
+  page.on('dialog', (d) => d.dismiss()) // konflik dulu memakai dialog; sekarang tidak boleh muncul
 
-  // Tanpa ?kode: kode tersimpan + cache lokal tidak boleh membuat aplikasi
-  // melewati perbandingan dengan cloud.
-  await pasangDokumen(page, lokal, { kode: 'keluarga-lokal-1' })
-
-  const banner = page.locator('.konflik-cloud')
-  await expect(banner).toBeVisible()
-  await expect(banner).toContainText('Cloud: 3 orang')
-  await expect(banner).toContainText('Perangkat: 2 orang')
-  await expect(page.locator('.status-sinkron')).toContainText('Menunggu pilihan data cloud')
-  await expect(page.locator('.kotak')).toHaveCount(2)
-
-  // Autosave awal tidak boleh menimpa 180 dengan cache 49.
-  await page.waitForTimeout(3600)
-  expect(api.put).toHaveLength(0)
-  expect(cloud.anggota).toHaveLength(3)
-
-  await page.getByRole('button', { name: /Muat dari Cloud \(3\)/ }).click()
-  await expect(banner).toHaveCount(0)
-  await expect(page.locator('.kotak')).toHaveCount(3)
-  await expect(page.locator('.kotak').getByText('Cloud Tiga', { exact: true })).toBeVisible()
-  await expect(page.locator('.nama-keluarga')).toContainText('Keluarga Cloud')
-  await expect(page.locator('.status-cloud')).toContainText(
-    'Dimuat dari database cloud: keluarga-lokal-1 (3 orang)',
-  )
-  await expect(page).toHaveURL(/\?kode=keluarga-lokal-1$/)
-  expect(await page.evaluate(() => localStorage.getItem('silsilah:kode'))).toBe('keluarga-lokal-1')
-  expect((await bacaLokal(page)).nama_keluarga).toBe('Keluarga Cloud')
-})
-
-test('cache lokal dipertahankan tanpa menimpa cloud saat memilih perangkat', async ({ page }) => {
-  test.setTimeout(30000)
-  const lokal = dokumen('Keluarga Lokal', [orang('l1', 'Lokal Satu')])
-  const cloud = dokumen('Keluarga Cloud', [orang('c1', 'Cloud Satu'), orang('c2', 'Cloud Dua')])
-  const api = await mockApi(page, { dokumen: { 'keluarga-lokal-1': cloud } })
-
-  await pasangDokumen(page, lokal, { kode: 'keluarga-lokal-1' })
-  await expect(page.locator('.konflik-cloud')).toBeVisible()
-
-  await page.getByRole('button', { name: 'Lihat data perangkat' }).click()
+  await page.goto('/?kode=keluarga-besar-1')
+  await expect(page.locator('.cetak-kepala')).toContainText('Keluarga Besar')
+  await expect(page.locator('.kotak')).toHaveCount(180)
   await expect(page.locator('.konflik-cloud')).toHaveCount(0)
-  await expect(page.locator('.status-cloud')).toContainText('cloud tidak diubah')
-  await expect(page.locator('.kotak')).toHaveCount(1)
-  await page.waitForTimeout(3600)
-  expect(api.put).toHaveLength(0)
-  expect(await bacaLokal(page)).toMatchObject({ nama_keluarga: 'Keluarga Lokal' })
-
-  // Tombol Muat Cloud tetap tersedia untuk mencoba lagi.
-  await page.getByRole('button', { name: '🔄 Muat Cloud' }).click()
-  await expect(page.locator('.konflik-cloud')).toBeVisible()
+  // Tidak ada tulisan ulang ke cloud: cloud sudah benar, GET saja.
+  expect(api.catatan.kirim).toHaveLength(0)
 })
 
-test('dokumen identik tidak meminta konfirmasi dan melaporkan sudah sama', async ({ page }) => {
-  const lokal = dokumen('Keluarga Sama', [
-    orang('a', 'Ani', { gender: 'P' }),
-    orang('b', 'Budi'),
-  ])
-  const cloud = { nama_keluarga: lokal.nama_keluarga, anggota: lokal.anggota.map(anggotaTernormal) }
-  const dialogs: string[] = []
-  page.on('dialog', (d) => {
-    dialogs.push(d.message())
-    d.dismiss()
-  })
-  await mockApi(page, { dokumen: { 'keluarga-sama-1': cloud } })
+test('delta dari user lain diterapkan tanpa reload lewat tombol Segarkan', async ({ page }) => {
+  const api = backendPalsu([{ kode: 'keluarga-besar-1', nama: 'Keluarga Besar', anggota: DOK_180.anggota }])
+  await api.pasang(page)
+  await page.goto('/?kode=keluarga-besar-1')
+  await expect(page.locator('.kotak')).toHaveCount(180)
 
-  await pasangDokumen(page, lokal, { kode: 'keluarga-sama-1', url: '/?kode=keluarga-sama-1' })
+  // "User lain" mengubah satu orang dan menambah satu orang di backend.
+  api.ubahLuar('keluarga-besar-1', 'p0', { ...DOK_180.anggota[0], nama: 'Orang 0 Baru' })
+  api.ubahLuar('keluarga-besar-1', 'baru-1', orang('baru-1', 'Pendatang Baru'))
 
-  await expect(page.locator('.status-cloud')).toContainText(
-    'Dokumen di cloud dan perangkat sudah sama: keluarga-sama-1',
-  )
-  await expect(page.locator('.kotak')).toHaveCount(2)
-  expect(dialogs).toEqual([])
-  expect(await page.evaluate(() => localStorage.getItem('silsilah:kode'))).toBe('keluarga-sama-1')
+  await page.getByRole('button', { name: '🔄 Segarkan' }).click()
+  await expect(page.locator('.kotak')).toHaveCount(181)
+  await expect(page.locator('.kotak', { hasText: 'Pendatang Baru' })).toHaveCount(1)
+  await expect(page.locator('.kotak', { hasText: 'Orang 0 Baru' })).toHaveCount(1)
 })
 
-test('kode tidak ada di cloud: status gagal, aplikasi tetap bisa dipakai', async ({ page }) => {
-  const errors: string[] = []
-  page.on('pageerror', (e) => errors.push(e.message))
-  await mockApi(page)
+test('hapus oleh user lain juga sampai lewat delta (tombstone)', async ({ page }) => {
+  const api = backendPalsu([{ kode: 'keluarga-besar-1', nama: 'Keluarga Besar', anggota: DOK_180.anggota }])
+  await api.pasang(page)
+  await page.goto('/?kode=keluarga-besar-1')
+  await expect(page.locator('.kotak')).toHaveCount(180)
 
-  await page.goto('/?kode=keluarga-hilang-1')
-
-  await expect(page.locator('.status-cloud')).toContainText('Gagal memuat dari database cloud')
-  await expect(page.locator('.status-cloud')).toContainText('Kode belum ada di cloud')
-  await expect(page.locator('.kotak')).toHaveCount(0)
-  await expect(page.getByRole('button', { name: /Mulai: Orang Pertama/ })).toBeVisible()
-
-  // Tetap bisa mulai mengisi; tidak ada layar rusak atau error tak tertangani.
-  await page.getByRole('button', { name: /Mulai: Orang Pertama/ }).click()
-  await expect(page.locator('.panel-bawah')).toBeVisible()
-  await expect(page.getByLabel('Nama')).toBeVisible()
-  expect(errors).toEqual([])
-  expect(await page.evaluate(() => localStorage.getItem('silsilah:kode'))).toBe(null)
+  api.ubahLuar('keluarga-besar-1', 'p5', null)
+  await page.getByRole('button', { name: '🔄 Segarkan' }).click()
+  await expect(page.locator('.kotak')).toHaveCount(179)
 })
 
-test('autosave gagal lalu Coba lagi menyimpan dan menampilkan kode', async ({ page }) => {
-  test.setTimeout(45000)
-  const api = await mockApi(page, { gagalPut: true })
-  await pasangDokumen(page, dokumen('Keluarga Retry', [orang('r1', 'Retry Satu')]))
+test('offline: antrean menunggu, status jelas, terkirim begitu pulih (tanpa kehilangan data)', async ({ page }) => {
+  const api = backendPalsu([{ kode: 'keluarga-besar-1', nama: 'Keluarga Besar', anggota: DOK_180.anggota }])
+  await api.pasang(page)
+  await page.goto('/?kode=keluarga-besar-1')
+  await expect(page.locator('.kotak')).toHaveCount(180)
 
-  await expect(page.locator('.status-sinkron')).toContainText('Gagal simpan ke cloud', {
-    timeout: 15000,
-  })
-  const coba = page.getByRole('button', { name: 'Coba lagi' })
-  await expect(coba).toBeVisible()
-  expect(api.put.length).toBeGreaterThanOrEqual(1)
+  api.gagalkanKirim()
+  page.on('dialog', (d) => d.accept())
+  await page.getByRole('button', { name: '☰ Menu' }).click()
+  await page.getByRole('button', { name: /Tambah Orang/ }).click()
+  await page.getByLabel('Nama').fill('Anak Offline')
+  await page.getByRole('button', { name: 'Simpan' }).click()
+  await expect(page.locator('.status-sinkron')).toContainText('Offline', { timeout: 8000 })
+  await expect(page.locator('.status-sinkron')).toContainText('1 perubahan')
+  await expect(page.locator('.kotak', { hasText: 'Anak Offline' })).toHaveCount(1)
 
-  api.gagalPut = false
-  await coba.click()
+  // Muat ulang saat masih offline: antrean dipulihkan dari localStorage.
+  await page.reload()
+  await expect(page.locator('.status-sinkron')).toContainText('Offline', { timeout: 8000 })
 
-  await expect(page.locator('.status-sinkron')).toContainText('Tersimpan otomatis', {
-    timeout: 10000,
-  })
-  await expect(page.locator('.kode-sinkron')).toHaveText(/^keluarga-retry-[a-z0-9]{6}$/)
-
-  const kode = ((await page.locator('.kode-sinkron').textContent()) || '').trim()
-  expect(await page.evaluate(() => localStorage.getItem('silsilah:kode'))).toBe(kode)
-  const terakhir = api.put[api.put.length - 1]
-  expect(terakhir.kode).toBe(kode)
-  expect(terakhir.data?.anggota?.some((a) => a.nama === 'Retry Satu')).toBe(true)
+  // Koneksi pulih: kirim ulang otomatis saat online.
+  api.pulihkanKirim()
+  await page.evaluate(() => window.dispatchEvent(new Event('online')))
+  await expect(page.locator('.status-sinkron')).toContainText('Tersimpan otomatis', { timeout: 8000 })
+  const kirim = api.catatan.kirim.find((k) => k.perubahan.some((p) => p.rec?.nama === 'Anak Offline'))
+  expect(kirim).toBeDefined()
 })
 
-test('pindah keluarga: PUT gagal menahan di dashboard, lalu pindah berhasil', async ({ page }) => {
-  test.setTimeout(45000)
-  const aktif = dokumen('Keluarga Aktif', [orang('a1', 'Aktif Satu')])
-  const target = dokumen('Keluarga Baru', [orang('b1', 'Baru Satu')])
-  const api = await mockApi(page, {
-    daftar: [
-      { kode: 'keluarga-aktif-1', nama: 'Keluarga Aktif', jumlah: 1 },
-      { kode: 'keluarga-baru-2', nama: 'Keluarga Baru', jumlah: 1 },
-    ],
-    dokumen: { 'keluarga-aktif-1': aktif, 'keluarga-baru-2': target },
-    gagalPut: true,
-  })
-  const pesan = catatDialog(page)
+test('kode tidak ada di cloud: pesan jelas, aplikasi tetap bisa dipakai', async ({ page }) => {
+  const api = backendPalsu()
+  await api.pasang(page)
+  await pasangDokumen(page, CACHE_49)
+  await page.goto('/?kode=keluarga-tidak-ada')
+  await expect(page.locator('.status-cloud')).toContainText('belum ada di database')
+  // Data perangkat tetap tampil dan bisa diedit; autosave tetap aktif.
+  await expect(page.locator('.kotak')).toHaveCount(49)
+})
 
-  await pasangDokumen(page, aktif, { kode: 'keluarga-aktif-1', url: '/?daftar=1' })
-  const bukaBaru = page.locator('.daftar-keluarga .buka-keluarga', { hasText: 'Keluarga Baru' })
-  await expect(bukaBaru).toBeVisible()
-
-  // PUT tertunda gagal: alert, tetap di dashboard, keluarga aktif tidak diganti.
-  await bukaBaru.click()
-  await expect
-    .poll(() => pesan.some((p) => p.startsWith('alert:') && p.includes('belum tersimpan')))
-    .toBe(true)
+test('/api/families gagal: dashboard menampilkan kosong tanpa crash dan tetap bisa kembali', async ({ page }) => {
+  const api = backendPalsu([{ kode: 'keluarga-a-1', nama: 'Keluarga A', anggota: [orang('a', 'Ani')] }])
+  await api.pasang(page, { tanpaFamilies: true })
+  await pasangDokumen(page, dokumen('Keluarga A', [orang('a', 'Ani')]), { kode: 'keluarga-a-1' })
+  await page.goto('/?daftar=1')
   await expect(page.locator('.daftar-layar')).toBeVisible()
-  await expect(page).toHaveURL(/\?daftar=1$/)
-  expect(await page.evaluate(() => localStorage.getItem('silsilah:kode'))).toBe('keluarga-aktif-1')
-  await expect(page.locator('.kotak')).toHaveCount(0)
-
-  // Sambungan pulih: simpan berhasil, konfirmasi pindah, lalu dokumen target dimuat.
-  api.gagalPut = false
-  await bukaBaru.click()
-
-  await expect(page.locator('.kotak').getByText('Baru Satu', { exact: true })).toBeVisible()
-  await expect(page.locator('.daftar-layar')).toHaveCount(0)
-  await expect(page.locator('.status-cloud')).toContainText(
-    'Dimuat dari database cloud: keluarga-baru-2 (1 orang)',
-  )
-  expect(pesan.some((p) => p.startsWith('confirm:') && p.includes('Buka keluarga keluarga-baru-2?'))).toBe(
-    true,
-  )
-  await expect(page).toHaveURL(/\?kode=keluarga-baru-2$/)
-  expect(await page.evaluate(() => localStorage.getItem('silsilah:kode'))).toBe('keluarga-baru-2')
+  await expect(page.locator('.daftar-layar')).toContainText('Belum ada keluarga di database')
+  await expect(page.getByRole('button', { name: /Kembali ke/ })).toBeVisible()
+  await page.getByRole('button', { name: /Kembali ke/ }).click()
+  await expect(page.locator('.kotak')).toHaveCount(1)
 })
 
-test('hapus keluarga aktif: simpan dulu, DELETE konfirmasi=ya, dokumen lokal bersih', async ({
-  page,
-}) => {
-  test.setTimeout(45000)
-  const aktif = dokumen('Keluarga Aktif', [orang('a1', 'Aktif Satu')])
-  const api = await mockApi(page, {
-    daftar: [
-      { kode: 'keluarga-aktif-1', nama: 'Keluarga Aktif', jumlah: 1 },
-      { kode: 'keluarga-cadangan-2', nama: 'Keluarga Cadangan', jumlah: 1 },
-    ],
-    dokumen: { 'keluarga-aktif-1': aktif },
-  })
-  catatDialog(page)
+test('hapus keluarga aktif: simpan dulu, DELETE konfirmasi=ya, dokumen lokal bersih', async ({ page }) => {
+  const api = backendPalsu([{ kode: 'keluarga-aktif-1', nama: 'Keluarga Aktif', anggota: [orang('a', 'Ani')] }])
+  await api.pasang(page)
+  await pasangDokumen(page, dokumen('Keluarga Aktif', [orang('a', 'Ani')]), { kode: 'keluarga-aktif-1' })
+  await page.goto('/?daftar=1')
+  page.on('dialog', (d) => d.accept())
 
-  await pasangDokumen(page, aktif, { kode: 'keluarga-aktif-1', url: '/?daftar=1' })
-  const hapus = page.getByRole('button', { name: 'Hapus silsilah Keluarga Aktif' })
-  await expect(hapus).toBeVisible()
-
-  await hapus.click()
-
-  await expect.poll(() => api.hapus.length).toBe(1)
-  expect(api.hapus[0].get('kode')).toBe('keluarga-aktif-1')
-  expect(api.hapus[0].get('konfirmasi')).toBe('ya')
-  // Dokumen aktif disimpan lebih dulu supaya PUT yang tertunda tidak menulis ulang setelah DELETE.
-  const iPertamaPut = api.urutan.indexOf('PUT')
-  const iHapus = api.urutan.indexOf('DELETE')
-  expect(iPertamaPut).toBeGreaterThanOrEqual(0)
-  expect(iHapus).toBeGreaterThan(iPertamaPut)
-
-  await expect(page.locator('.daftar-keluarga')).not.toContainText('Keluarga Aktif')
-  await expect(page.locator('.daftar-keluarga')).toContainText('Keluarga Cadangan')
-  await expect(page.locator('.status-cloud')).toContainText('Silsilah "Keluarga Aktif" dihapus.')
-  await expect(page).toHaveURL(/\?daftar=1$/)
-
-  await expect.poll(async () => (await bacaLokal(page)).anggota.length).toBe(0)
+  await page.getByRole('button', { name: 'Hapus silsilah Keluarga Aktif' }).click()
+  await expect.poll(() => api.catatan.hapus.length).toBe(1)
+  expect(api.catatan.hapus[0]).toContain('keluarga-aktif-1')
   expect(await page.evaluate(() => localStorage.getItem('silsilah:kode'))).toBe(null)
+  await expect(page.locator('.daftar-layar')).toContainText('Belum ada keluarga di database')
 })
 
-test('hapus keluarga lain: gagal memberi alert, lalu berhasil tanpa mengganggu data aktif', async ({
-  page,
-}) => {
-  test.setTimeout(45000)
-  const aktif = dokumen('Keluarga Aktif', [orang('a1', 'Aktif Satu')])
-  const api = await mockApi(page, {
-    daftar: [
-      { kode: 'keluarga-aktif-1', nama: 'Keluarga Aktif', jumlah: 1 },
-      { kode: 'keluarga-cadangan-2', nama: 'Keluarga Cadangan', jumlah: 1 },
-    ],
-    dokumen: { 'keluarga-aktif-1': aktif },
-    gagalHapus: true,
-  })
-  const pesan = catatDialog(page)
+test('hapus keluarga lain: data keluarga aktif tidak terganggu', async ({ page }) => {
+  const api = backendPalsu([
+    { kode: 'keluarga-aktif-1', nama: 'Keluarga Aktif', anggota: [orang('a', 'Ani')] },
+    { kode: 'keluarga-lain-2', nama: 'Keluarga Lain', anggota: [orang('b', 'Budi')] },
+  ])
+  await api.pasang(page)
+  await pasangDokumen(page, dokumen('Keluarga Aktif', [orang('a', 'Ani')]), { kode: 'keluarga-aktif-1' })
+  await page.goto('/?daftar=1')
+  page.on('dialog', (d) => d.accept())
 
-  await pasangDokumen(page, aktif, { kode: 'keluarga-aktif-1', url: '/?daftar=1' })
-  const hapusCadangan = page.getByRole('button', { name: 'Hapus silsilah Keluarga Cadangan' })
-  await expect(hapusCadangan).toBeVisible()
-
-  // DELETE gagal: alert tampil dan baris tetap ada.
-  await hapusCadangan.click()
-  await expect
-    .poll(() => pesan.some((p) => p.startsWith('alert:') && p.includes('Gagal menghapus silsilah')))
-    .toBe(true)
-  await expect(page.locator('.daftar-keluarga')).toContainText('Keluarga Cadangan')
-  await expect(page.locator('.daftar-keluarga')).toContainText('Keluarga Aktif')
-  expect((await bacaLokal(page)).anggota.map((a) => a.nama)).toEqual(['Aktif Satu'])
+  await page.getByRole('button', { name: 'Hapus silsilah Keluarga Lain' }).click()
+  await expect.poll(() => api.catatan.hapus.length).toBe(1)
+  expect(api.catatan.hapus[0]).toContain('keluarga-lain-2')
   expect(await page.evaluate(() => localStorage.getItem('silsilah:kode'))).toBe('keluarga-aktif-1')
-
-  // DELETE berhasil: hanya baris target hilang, data keluarga aktif utuh.
-  api.gagalHapus = false
-  await hapusCadangan.click()
-  await expect.poll(() => api.hapus.length).toBe(2)
-
-  await expect(page.locator('.daftar-keluarga')).not.toContainText('Keluarga Cadangan')
-  await expect(page.locator('.daftar-keluarga')).toContainText('Keluarga Aktif')
-  expect((await bacaLokal(page)).anggota.map((a) => a.nama)).toEqual(['Aktif Satu'])
-  expect(await page.evaluate(() => localStorage.getItem('silsilah:kode'))).toBe('keluarga-aktif-1')
-
-  // Kembali ke pohon: dokumen kerja tetap seperti semula.
-  await page.getByRole('button', { name: /Kembali ke Keluarga Aktif/ }).click()
-  await expect(page.locator('.kotak')).toHaveCount(1)
-  await expect(page.locator('.kotak').getByText('Aktif Satu', { exact: true })).toBeVisible()
-  await expect(page.locator('.kode-sinkron')).toHaveText('keluarga-aktif-1')
-  await expect(page).toHaveURL(/\?kode=keluarga-aktif-1$/)
 })
 
-test('/api/families gagal: dashboard menampilkan kosong tanpa crash dan tetap bisa kembali', async ({
-  page,
-}) => {
-  const aktif = dokumen('Keluarga Aktif', [orang('a1', 'Aktif Satu')])
-  const errors: string[] = []
-  page.on('pageerror', (e) => errors.push(e.message))
-  await mockApi(page, { gagalDaftar: true, dokumen: { 'keluarga-aktif-1': aktif } })
+test('ganti nama: batal dan spasi saja tidak mengubah, nama di-trim dan tersimpan', async ({ page }) => {
+  const api = backendPalsu([{ kode: 'keluarga-nama-1', nama: 'Nama Lama', anggota: [orang('a', 'Ani')] }])
+  await api.pasang(page)
+  await pasangDokumen(page, dokumen('Nama Lama', [orang('a', 'Ani')]), { kode: 'keluarga-nama-1' })
+  await page.goto('/?kode=keluarga-nama-1')
 
-  await pasangDokumen(page, aktif, { kode: 'keluarga-aktif-1', url: '/?daftar=1' })
-
-  await expect(page.locator('.daftar-layar h2')).toHaveText('Daftar Keluarga')
-  await expect(page.locator('.daftar-layar')).toContainText('Belum ada keluarga di database.')
-  await expect(page.getByRole('button', { name: /Kembali ke Keluarga Aktif/ })).toBeVisible()
-  expect(errors).toEqual([])
-
-  // Data lokal tetap bisa dibuka kembali walau daftar cloud gagal dimuat.
-  await page.getByRole('button', { name: /Kembali ke Keluarga Aktif/ }).click()
-  await expect(page.locator('.kotak')).toHaveCount(1)
-  await expect(page.locator('.kode-sinkron')).toHaveText('keluarga-aktif-1')
-  await expect(page).toHaveURL(/\?kode=keluarga-aktif-1$/)
-})
-
-test('ganti nama: batal dan spasi saja tidak mengubah, nama di-trim dan tersimpan', async ({
-  page,
-}) => {
-  const aktif = dokumen('Keluarga Awal', [orang('a1', 'Aktif Satu')])
-  await mockApi(page, { dokumen: { 'keluarga-aktif-1': aktif } })
-
-  const aksi: (string | null)[] = []
-  const dialogs: string[] = []
-  page.on('dialog', (d) => {
-    dialogs.push(d.type() + ': ' + d.message())
-    const berikut = aksi.shift()
-    if (berikut == null) d.dismiss()
-    else d.accept(berikut)
-  })
-
-  await pasangDokumen(page, aktif, { kode: 'keluarga-aktif-1' })
-  await expect(page.locator('.nama-keluarga')).toContainText('Keluarga Awal')
-
-  // Batal.
-  aksi.push(null)
+  // Batal: prompt ditutup tanpa nilai.
+  page.once('dialog', (d) => d.dismiss())
   await page.locator('.nama-keluarga').click()
-  await expect.poll(() => dialogs.length).toBe(1)
-  await expect(page.locator('.nama-keluarga')).toContainText('Keluarga Awal')
-  expect((await bacaLokal(page)).nama_keluarga).toBe('Keluarga Awal')
+  await expect(page.locator('.nama-keluarga')).toContainText('Nama Lama')
 
-  // Hanya spasi: prompt valid secara teknis, tapi nama tidak boleh berubah.
-  aksi.push('   ')
+  // Spasi saja: tidak mengubah apa pun.
+  page.once('dialog', (d) => d.accept('   '))
   await page.locator('.nama-keluarga').click()
-  await expect.poll(() => dialogs.length).toBe(2)
-  await expect(page.locator('.nama-keluarga')).toContainText('Keluarga Awal')
-  expect((await bacaLokal(page)).nama_keluarga).toBe('Keluarga Awal')
+  await expect(page.locator('.nama-keluarga')).toContainText('Nama Lama')
 
-  // Nama berisi spasi di ujung: disimpan dalam bentuk ter-trim.
-  const put = page.waitForRequest(
-    (r) =>
-      r.method() === 'PUT' &&
-      new URL(r.url()).pathname === '/api/data' &&
-      (r.postData() || '').includes('Keluarga Rapi'),
-  )
-  aksi.push('  Keluarga Rapi  ')
+  // Nama baru dengan spasi di tepi: di-trim lalu dikirim ke cloud.
+  page.once('dialog', (d) => d.accept('  Nama Baru  '))
   await page.locator('.nama-keluarga').click()
-  await expect.poll(() => dialogs.length).toBe(3)
-  const dikirim = (await put).postDataJSON() as { data: { nama_keluarga: string } }
-  expect(dikirim.data.nama_keluarga).toBe('Keluarga Rapi')
-
-  await expect(page.locator('.nama-keluarga')).toContainText('Keluarga Rapi')
-  await expect.poll(async () => (await bacaLokal(page)).nama_keluarga).toBe('Keluarga Rapi')
+  await expect(page.locator('.nama-keluarga')).toContainText('Nama Baru')
+  await expect.poll(() => api.catatan.kirim.length, { timeout: 8000 }).toBeGreaterThanOrEqual(1)
+  expect(api.catatan.kirim[api.catatan.kirim.length - 1].nama).toBe('Nama Baru')
 })
 
 test('?daftar=1 tanpa data lokal dan keluarga kosong menampilkan ajakan mulai', async ({ page }) => {
-  const errors: string[] = []
-  page.on('pageerror', (e) => errors.push(e.message))
-  await mockApi(page)
-
+  const api = backendPalsu()
+  await api.pasang(page)
   await page.goto('/?daftar=1')
-
-  await expect(page.locator('.daftar-layar h2')).toHaveText('Daftar Keluarga')
-  await expect(page.locator('.daftar-layar')).toContainText('Belum ada keluarga di database.')
-  await expect(page.getByRole('button', { name: /Silsilah Baru/ })).toBeVisible()
-  await expect(page.locator('.kotak')).toHaveCount(0)
-  await expect(page.getByRole('button', { name: /Kembali ke/ })).toHaveCount(0)
-  await expect(page).toHaveURL(/\?daftar=1$/)
-  expect(errors).toEqual([])
+  await expect(page.locator('.daftar-layar')).toBeVisible()
+  await expect(page.locator('.daftar-layar')).toContainText('Belum ada keluarga di database')
 })

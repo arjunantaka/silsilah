@@ -3,7 +3,7 @@
 //   jatuh ke cache hanya saat offline.
 // - Aset ber-hash dari Vite: cache-first (nama file berubah tiap build).
 // - /api/ tidak pernah di-cache.
-const CACHE = 'silsilah-v3'
+const CACHE = 'silsilah-v4'
 
 self.addEventListener('install', () => {
   self.skipWaiting()

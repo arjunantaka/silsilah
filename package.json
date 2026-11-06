@@ -10,9 +10,14 @@
     "serve": "vite preview --host",
     "check": "svelte-check --tsconfig ./tsconfig.json",
     "test:e2e": "playwright test",
-    "cf:dev": "npm run build && npx -y wrangler@3.114.17 pages dev",
-    "cf:preview": "npm run build && npx -y wrangler@3.114.17 pages deploy dist --project-name silsilah-keluarga --branch preview",
-    "cf:deploy": "npm run build && npx -y wrangler@3.114.17 pages deploy dist --project-name silsilah-keluarga --branch main"
+    "cf:dev": "npm run build && wrangler pages dev",
+    "cf:preview": "npm run build && wrangler pages deploy dist --project-name silsilah-keluarga --branch preview",
+    "cf:deploy": "npm run build && wrangler pages deploy dist --project-name silsilah-keluarga --branch main",
+    "cf:skema": "wrangler d1 execute silsilah --remote --file migrations/0001_skema.sql && wrangler d1 execute silsilah-preview --remote --file migrations/0001_skema.sql",
+    "cf:skema-lokal": "wrangler d1 execute silsilah --local --file migrations/0001_skema.sql",
+    "cf:impor": "wrangler d1 execute silsilah --remote --file tools/impor-prod.sql",
+    "cf:impor-lokal": "wrangler d1 execute silsilah --local --file tools/impor-prod.sql",
+    "cf:ekspor": "wrangler d1 export silsilah --remote --output=/home/nantaka/silsilah-backups/d1-silsilah-$(date +%Y%m%d).sql"
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",

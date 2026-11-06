@@ -1,19 +1,28 @@
 import { test, expect } from '@playwright/test'
 
+type PerubahanTerkirim = { kode?: string; nama?: string; perubahan?: { id: string; rec: { nama?: string } | null }[] }
+
 test('create keluarga → tersimpan otomatis dengan kode baru', async ({ page }) => {
-  const put: { kode?: string; data?: { anggota?: { nama: string }[] } }[] = []
+  const kirim: PerubahanTerkirim[] = []
   await page.route('**/api/**', async (route) => {
     const url = new URL(route.request().url())
     const method = route.request().method()
-    if (url.pathname === '/api/data' && method === 'PUT') {
+    if (url.pathname === '/api/sync') {
       const body = route.request().postDataJSON()
-      put.push(body)
+      kirim.push(body)
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ ok: true, data: body.kode }),
+        body: JSON.stringify({ ok: true, revisi: kirim.length }),
+      })
+    } else if (url.pathname === '/api/delta') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ ok: true, revisi: 0, nama_keluarga: 'Keluarga Saya', ubah: [] }),
       })
     } else if (url.pathname === '/api/data') {
+      // Kode baru dicek lewat GET 404; tidak ada data lain di tes ini.
       await route.fulfill({
         status: 404,
         contentType: 'application/json',
@@ -29,12 +38,13 @@ test('create keluarga → tersimpan otomatis dengan kode baru', async ({ page })
   await page.getByLabel('Nama').fill('Budi')
   await page.getByRole('button', { name: 'Simpan' }).click()
 
-  await page.waitForTimeout(5000) // debounce 3 detik + margin
+  await page.waitForTimeout(3500) // debounce 1,5 detik + margin
 
-  expect(put.length).toBeGreaterThanOrEqual(1)
-  expect(put[0].kode).toMatch(/^keluarga-saya-[a-z0-9]{6}$/)
-  const anggota = put[0].data?.anggota ?? []
-  expect(anggota.some((a) => a.nama === 'Budi')).toBe(true)
+  expect(kirim.length).toBeGreaterThanOrEqual(1)
+  expect(kirim[0].kode).toMatch(/^keluarga-saya-[a-z0-9]{6}$/)
+  const perubahan = kirim[0].perubahan ?? []
+  expect(perubahan.some((p) => p.rec?.nama === 'Budi')).toBe(true)
+  expect(kirim[0].nama).toBe('Keluarga Saya')
 
   await expect(page.locator('.status-sinkron')).toContainText('Tersimpan otomatis')
   await expect(page.locator('.kode-sinkron')).toHaveText(/^keluarga-saya-[a-z0-9]{6}$/)
@@ -72,6 +82,7 @@ test('layar kosong menampilkan daftar keluarga dari database', async ({ page }) 
         contentType: 'application/json',
         body: JSON.stringify({
           ok: true,
+          revisi: 4,
           data: {
             nama_keluarga: 'Keluarga Budi',
             anggota: [orang('a', 'Budi', 'L', null, null), orang('b', 'Sari', 'P', null, null), orang('c', 'Ani', 'P', 'a', 'b')],
@@ -80,11 +91,15 @@ test('layar kosong menampilkan daftar keluarga dari database', async ({ page }) 
       })
       return
     }
-    if (url.pathname === '/api/data') {
-      await route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ ok: false }) })
+    if (url.pathname === '/api/delta') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ ok: true, revisi: 4, nama_keluarga: 'Keluarga Budi', ubah: [] }),
+      })
       return
     }
-    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, data: [] }) })
+    await route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ ok: false }) })
   })
 
   await page.goto('/')
@@ -117,6 +132,7 @@ test('silsilah baru: bersihkan lalu tetap bisa membuka keluarga lama dari daftar
         contentType: 'application/json',
         body: JSON.stringify({
           ok: true,
+          revisi: 2,
           data: {
             nama_keluarga: 'Keluarga Lama',
             anggota: [
@@ -155,32 +171,45 @@ test('silsilah baru: bersihkan lalu tetap bisa membuka keluarga lama dari daftar
 
   await expect(page.locator('.panel-bawah')).toBeVisible() // langsung ke form orang pertama
   expect(await page.evaluate(() => localStorage.getItem('silsilah:kode'))).toBe(null)
+  expect(await page.evaluate(() => localStorage.getItem('silsilah:antrean'))).toContain('"entri":[]')
   await page.keyboard.press('Escape')
   await expect(page.locator('.layar-kosong')).toBeVisible()
   await expect(page.locator('.daftar-keluarga')).toContainText('Keluarga Lama')
   await expect(page.locator('.daftar-keluarga')).toContainText('Keluarga Baru')
 })
-test('perubahan saat PUT berjalan tetap masuk antrean', async ({ page }) => {
+
+test('perubahan saat kirim berjalan tetap masuk flush berikutnya', async ({ page }) => {
   test.setTimeout(30000)
-  /** @type {{ data?: { nama_keluarga?: string } }[]} */
-  const bodies: { data?: { nama_keluarga?: string } }[] = []
+  const bodies: PerubahanTerkirim[] = []
 
   await page.route('**/api/**', async (route) => {
     const req = route.request()
     const url = new URL(req.url())
-    if (req.method() === 'PUT' && url.pathname === '/api/data') {
+    if (req.method() === 'POST' && url.pathname === '/api/sync') {
       bodies.push(JSON.parse(req.postData() || '{}'))
-      // PUT pertama lambat: perubahan nama terjadi saat request ini masih jalan.
-      if (bodies.length === 1) await new Promise((r) => setTimeout(r, 5000))
+      // Kirim pertama lambat: perubahan nama terjadi saat request ini masih jalan.
+      if (bodies.length === 1) {
+        const { promise, resolve } = Promise.withResolvers<void>()
+        setTimeout(resolve, 4000)
+        await promise
+      }
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ ok: true, data: 'keluarga-saya-abc123' }),
+        body: JSON.stringify({ ok: true, revisi: bodies.length }),
       })
       return
     }
     if (url.pathname === '/api/families') {
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, data: [] }) })
+      return
+    }
+    if (url.pathname === '/api/delta') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ ok: true, revisi: 0, nama_keluarga: 'Keluarga Saya', ubah: [] }),
+      })
       return
     }
     await route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ ok: false }) })
@@ -192,12 +221,12 @@ test('perubahan saat PUT berjalan tetap masuk antrean', async ({ page }) => {
   await page.getByLabel('Nama').fill('Budi')
   await page.getByRole('button', { name: 'Simpan' }).click()
 
-  await page.waitForRequest((r) => r.method() === 'PUT')
+  await page.waitForRequest((r) => r.method() === 'POST' && r.url().includes('/api/sync'))
   await page.locator('.nama-keluarga').click()
   await expect(page.locator('.nama-keluarga')).toContainText('Keluarga Antre')
 
   await expect.poll(() => bodies.length, { timeout: 15000 }).toBeGreaterThanOrEqual(2)
-  expect(bodies[bodies.length - 1]?.data?.nama_keluarga).toBe('Keluarga Antre')
+  expect(bodies[bodies.length - 1]?.nama).toBe('Keluarga Antre')
 })
 
 test('hapus keluarga dari dashboard butuh konfirmasi Ya', async ({ page }) => {
@@ -212,8 +241,8 @@ test('hapus keluarga dari dashboard butuh konfirmasi Ya', async ({ page }) => {
         body: JSON.stringify({
           ok: true,
           data: [
-            { kode: 'keluarga-budi-1', nama: 'Keluarga Budi', jumlah: 3 },
-            { kode: 'keluarga-sari-2', nama: 'Keluarga Sari', jumlah: 2 },
+            { kode: 'keluarga-budi-1', nama: 'Keluarga Budi', jumlah: 3, revisi: 2 },
+            { kode: 'keluarga-sari-2', nama: 'Keluarga Sari', jumlah: 2, revisi: 1 },
           ],
         }),
       })

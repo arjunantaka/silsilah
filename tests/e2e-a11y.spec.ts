@@ -202,12 +202,12 @@ test('wilayah status (role=status) tersedia untuk pembaca layar', async ({ page 
   await expect(sinkron).toHaveAttribute('role', 'status')
   await expect(page.getByRole('status').filter({ hasText: 'Salin Tautan' })).toHaveCount(1)
 
-  // Status cloud: pesan gagal muat tidak auto-hilang, jadi aman diuji.
+  // Status cloud: pesan offline tidak auto-hilang, jadi aman diuji.
   const cloud = page.locator('.status-cloud')
   await expect(cloud).toBeVisible()
   await expect(cloud).toHaveAttribute('role', 'status')
-  await expect(cloud).toContainText('Gagal memuat')
-  await expect(page.getByRole('status').filter({ hasText: 'Gagal memuat' })).toHaveCount(1)
+  await expect(cloud).toContainText('Offline: menampilkan data terakhir')
+  await expect(page.getByRole('status').filter({ hasText: 'Offline: menampilkan data terakhir' })).toHaveCount(1)
 
   // Banner fokus trah juga region status.
   await page.locator('#cari').fill('Sari')

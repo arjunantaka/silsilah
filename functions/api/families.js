@@ -1,31 +1,26 @@
-// Daftar keluarga tersimpan: kunci KV + metadata (nama, jumlah) dari PUT /api/data.
-// Tanpa akun/login: daftar ini publik - siapa pun yang buka situs bisa melihat kode.
+// Daftar keluarga langsung dari tabel keluarga D1 (tanpa filter backup lagi).
+import { gagal, dbDari } from './bersama.js'
+
 const MAKS_DAFTAR = 100
-const MAKS_LIST = 1000
-const PREFIX_BACKUP = '__backup__:'
 
 /** @param {{ request: Request, env: Record<string, unknown> }} ctx */
 export async function onRequestGet({ env }) {
-  const json = (/** @type {unknown} */ b, /** @type {number} */ s) =>
-    new Response(JSON.stringify(b), {
-      status: s,
-      headers: {
-        'content-type': 'application/json; charset=utf-8',
-        'cache-control': 'no-store',
-      },
-    })
-  if (!env.SILSILAH_KV)
-    return json({ ok: false, pesan: 'Database cloud belum dikonfigurasi (binding SILSILAH_KV hilang).' }, 503)
-  /** @type {{ keys: { name: string, metadata?: { nama?: string, jumlah?: number, revisi?: number } | null }[] }} */
-  const list = await /** @type {any} */ (env.SILSILAH_KV).list({ limit: MAKS_LIST })
-  const keluarga = list.keys
-    .filter((k) => !k.name.startsWith(PREFIX_BACKUP))
-    .slice(0, MAKS_DAFTAR)
-    .map((k) => ({
-      kode: k.name,
-      nama: k.metadata?.nama ?? null,
-      jumlah: k.metadata?.jumlah ?? null,
-      revisi: Number.isInteger(k.metadata?.revisi) ? k.metadata?.revisi : 0,
-    }))
-  return json({ ok: true, data: keluarga }, 200)
+  let db
+  try {
+    db = dbDari(env)
+  } catch (e) {
+    return gagal(/** @type {Error} */ (e).message, 503)
+  }
+  const hasil = await db
+    .prepare('SELECT kode, nama, jumlah, revisi, diubah FROM keluarga ORDER BY diubah DESC LIMIT ?')
+    .bind(MAKS_DAFTAR)
+    .all()
+  const keluarga = hasil.results.map((/** @type {any} */ k) => ({
+    kode: k.kode,
+    nama: k.nama,
+    jumlah: k.jumlah,
+    revisi: k.revisi,
+    diubah: k.diubah,
+  }))
+  return Response.json({ ok: true, data: keluarga }, { headers: { 'cache-control': 'no-store' } })
 }

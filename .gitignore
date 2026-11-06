@@ -52,6 +52,9 @@ debug-*.png
 debug-*.cjs
 manual-test.html
 
+
+# Impor data produksi berisi data keluarga asli; jangan masuk repo.
+tools/impor-prod.sql
 # Database lokal
 *.db
 *.sqlite

@@ -61,6 +61,12 @@ export function idBaru() {
   return crypto.randomUUID()
 }
 
+/** Normalisasi satu anggota: field lama yang hilang diberi default aman. */
+/** @param {any} a @returns {Anggota} */
+function normal(a) {
+  return { kode: '', tempat_lahir: '', alamat: '', pekerjaan: '', pisah: [], ...a }
+}
+
 /** @returns {DataKeluarga} */
 function muatAwal() {
   try {
@@ -68,12 +74,101 @@ function muatAwal() {
     if (raw) {
       const obj = JSON.parse(raw)
       if (obj && typeof obj.nama_keluarga === 'string' && Array.isArray(obj.anggota)) {
-        obj.anggota = obj.anggota.map((/** @type {any} */ a) => ({ kode: '', tempat_lahir: '', alamat: '', pekerjaan: '', pisah: [], ...a }))
+        obj.anggota = obj.anggota.map(normal)
         return obj
       }
     }
   } catch {}
   return { ...DEFAULT, anggota: [] }
+}
+
+// ---------- Pencatatan perubahan untuk sinkronisasi cloud ----------
+// Cloud D1 sumber kebenaran; antrean ini perubahan lokal yang belum terkirim.
+// Map id -> salinan rec terbaru; nilai null = anggota dihapus (tombstone).
+// Dokumen penuh (terapkanDokumen/muatJSON/hapusSemua) tidak dicatat: itu
+// penggantian ruang kerja, bukan perubahan data keluarga yang sedang aktif.
+const KEY_ANTREAN = 'silsilah:antrean'
+/** @type {Map<string, any|null>} */
+const antreanUbah = new Map()
+let antreanNama = false
+let antreanKode = localStorage.getItem('silsilah:kode') || ''
+/** @type {null | (() => void)} */
+let pendengarUbah = null
+/** Jumlah entri antrean (reaktif, untuk status offline di UI). */
+export const antreanBerubah = writable(0)
+
+function simpanAntrean() {
+  try {
+    localStorage.setItem(
+      KEY_ANTREAN,
+      JSON.stringify({ kode: antreanKode, nama: antreanNama, entri: [...antreanUbah.entries()] }),
+    )
+  } catch {}
+}
+
+try {
+  const raw = JSON.parse(localStorage.getItem(KEY_ANTREAN) || '')
+  if (raw && typeof raw === 'object' && Array.isArray(raw.entri)) {
+    antreanKode = typeof raw.kode === 'string' ? raw.kode : ''
+    antreanNama = raw.nama === true
+    for (const [id, rec] of raw.entri) antreanUbah.set(id, rec)
+  }
+} catch {}
+
+/** Catat baris yang berubah; id yang tidak ada di data = tombstone. @param {string[]} ids */
+function catat(...ids) {
+  const anggota = get(data).anggota
+  for (const id of ids) {
+    const a = anggota.find((x) => x.id === id)
+    antreanUbah.set(id, a ? { ...a } : null)
+  }
+  antreanBerubah.set(antreanUbah.size)
+  simpanAntrean()
+  pendengarUbah?.()
+}
+
+/** Daftararkan pendengar: dipanggil setiap ada perubahan lokal baru. @param {() => void} fn */
+export function saatUbah(fn) {
+  pendengarUbah = fn
+}
+
+/** Snapshot antrean untuk dikirim. Referensi rec dipertahankan apa adanya
+ *  supaya bersihkanAntrean bisa membedakan entri yang sudah terkirim. */
+export function ambilAntrean() {
+  return { kode: antreanKode, nama: antreanNama, entri: [...antreanUbah.entries()] }
+}
+
+/** @returns {number} */
+export function jumlahAntrean() {
+  return antreanUbah.size + (antreanNama ? 1 : 0)
+}
+
+/** Kode keluarga tempat entri antrean ini berikutnya dikirim. @param {string} kode */
+export function aturKodeAntrean(kode) {
+  if (kode) antreanKode = kode
+}
+
+/**
+ * Buang entri yang sudah terkirim. Entri yang direkam ulang sejak snapshot
+ * (referensi beda) dibiarkan supaya perubahan terbaru tetap terkirim nanti.
+ * @param {[string, any][]} entriTerkirim
+ * @param {boolean} namaTerkirim
+ */
+export function bersihkanAntrean(entriTerkirim, namaTerkirim) {
+  for (const [id, rec] of entriTerkirim) {
+    if (antreanUbah.get(id) === rec) antreanUbah.delete(id)
+  }
+  if (namaTerkirim) antreanNama = false
+  antreanBerubah.set(antreanUbah.size)
+  simpanAntrean()
+}
+
+/** Kosongkan seluruh antrean (dipakai saat kode keluarga dilepas). */
+export function kosongkanAntrean() {
+  antreanUbah.clear()
+  antreanKode = ''
+  antreanBerubah.set(antreanUbah.size)
+  simpanAntrean()
 }
 
 // Keturunan per generasi (BFS): hasil[0] = anak, hasil[1] = cucu, dst.
@@ -128,6 +223,7 @@ export function tambahAkar(fields) {
     d.anggota.push({ id, ...fields, ayah: null, ibu: null, pasangan: [], pisah: [] })
     return d
   })
+  catat(id)
   return id
 }
 
@@ -139,6 +235,7 @@ export function tambahAnak(ayahId, ibuId, fields) {
     d.anggota.push({ id, ...fields, ayah: ayahId, ibu: ibuId, pasangan: [], pisah: [] })
     return d
   })
+  catat(id)
   return id
 }
 
@@ -152,6 +249,7 @@ export function tambahPasangan(orangId, fields) {
     if (org) org.pasangan = [...(org.pasangan || []), id]
     return d
   })
+  catat(id, orangId)
   return id
 }
 
@@ -170,6 +268,7 @@ export function pisahkanPasangan(aId, bId) {
     }
     return d
   })
+  catat(aId, bId)
 }
 
 // Sambungkan orang (yang sudah ada, mungkin lepas) ke orang tua; null = tidak diketahui.
@@ -184,6 +283,7 @@ export function setOrtu(id, ayahId, ibuId) {
     }
     return d
   })
+  catat(id)
 }
 
 // Pasangkan dua orang yang sudah ada: penulisan ganda atomik di kedua pihak,
@@ -198,6 +298,7 @@ export function tautkanPasangan(aId, bId) {
     if (!(b.pasangan || []).includes(aId)) b.pasangan = [...(b.pasangan || []), aId]
     return d
   })
+  catat(aId, bId)
 }
 
 // Tandai/batalkan pisah (cerai): relasi pasangan tetap ada, hanya ditandai.
@@ -213,6 +314,7 @@ export function tandaiPisah(aId, bId) {
     }
     return d
   })
+  catat(aId, bId)
 }
 
 // Hanya field personal; relasi tidak tersentuh.
@@ -223,12 +325,24 @@ export function perbarui(id, patch) {
     if (org) Object.assign(org, patch)
     return d
   })
+  catat(id)
 }
 
 // Hapus satu anggota; pointer ke dia dibersihkan dari semua orang lain.
 // Tidak ada cascade: anak/pasangan tidak ikut terhapus.
 /** @param {string} id */
 export function hapus(id) {
+  // Orang lain yang pointernya dibersihkan ikut dicatat supaya perangkat
+  // lain menerima pembersihan yang sama, bukan hanya tombstone.
+  const terdampak = get(data).anggota
+    .filter(
+      (a) =>
+        a.ayah === id ||
+        a.ibu === id ||
+        (a.pasangan || []).includes(id) ||
+        (a.pisah || []).includes(id),
+    )
+    .map((a) => a.id)
   data.update((d) => {
     d.anggota = d.anggota.filter((a) => a.id !== id)
     for (const a of d.anggota) {
@@ -239,6 +353,7 @@ export function hapus(id) {
     }
     return d
   })
+  catat(id, ...terdampak)
 }
 
 /** @param {any} obj @returns {boolean} */
@@ -249,7 +364,7 @@ export function muatJSON(obj) {
   }
   data.set({
     nama_keluarga: obj.nama_keluarga,
-    anggota: obj.anggota.map((/** @type {any} */ a) => ({ kode: '', tempat_lahir: '', alamat: '', pekerjaan: '', pisah: [], ...a })),
+    anggota: obj.anggota.map(normal),
   })
   return true
 }
@@ -264,6 +379,9 @@ export function gantiNamaKeluarga(nama) {
     d.nama_keluarga = nama
     return d
   })
+  antreanNama = true
+  simpanAntrean()
+  pendengarUbah?.()
 }
 
 // Menentukan posisi ayah/ibu dari gender: 'P' → ibu, selain itu ('L'/'') → ayah.
@@ -283,4 +401,42 @@ export function ortuAnakDari(targetId, pasanganId) {
   if (gt === 'P' && gp !== 'P') return { ayah: pasanganId, ibu: /** @type {string} */ (targetId) }
   if (gp === 'P' && gt !== 'P') return { ayah: /** @type {string} */ (targetId), ibu: pasanganId }
   return { ayah: targetId ?? null, ibu: pasanganId }
+}
+
+// ---------- Penerimaan data dari cloud ----------
+
+/**
+ * Terapkan hasil delta: baris yang berubah dari perangkat lain. Entri yang
+ * masih ada di antrean lokal dilewati supaya perubahan yang belum terkirim
+ * tidak tertimpa balikan cloud yang lebih lama.
+ * @param {{ id: string, rec: any, rev?: number }[]} ubah
+ * @param {string|null} nama
+ */
+export function terapkanRemote(ubah, nama) {
+  if (!Array.isArray(ubah)) return
+  data.update((d) => {
+    for (const u of ubah) {
+      if (!u?.id || antreanUbah.has(u.id)) continue
+      const i = d.anggota.findIndex((x) => x.id === u.id)
+      if (u.rec === null || u.rec === undefined) {
+        if (i >= 0) d.anggota.splice(i, 1)
+      } else {
+        const baru = normal(typeof u.rec === 'string' ? JSON.parse(u.rec) : u.rec)
+        if (i >= 0) d.anggota[i] = baru
+        else d.anggota.push(baru)
+      }
+    }
+    if (nama && !antreanNama) d.nama_keluarga = nama
+    return d
+  })
+}
+
+/**
+ * Ganti seluruh dokumen kerja dari cloud (tanpa dialog, tanpa pencatatan).
+ * @param {any} obj @returns {boolean}
+ */
+export function terapkanDokumen(obj) {
+  if (!obj || typeof obj.nama_keluarga !== 'string' || !Array.isArray(obj.anggota)) return false
+  data.set({ nama_keluarga: obj.nama_keluarga, anggota: obj.anggota.map(normal) })
+  return true
 }
